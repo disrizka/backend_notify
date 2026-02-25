@@ -1,0 +1,1 @@
+<img src="{{ asset('assets/img/jonusa.png') }}" {{ $attributes }} alt="Logo Jonusa">
