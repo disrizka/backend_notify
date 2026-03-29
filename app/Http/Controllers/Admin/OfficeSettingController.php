@@ -8,13 +8,11 @@ use Illuminate\Http\Request;
 
 class OfficeSettingController extends Controller
 {
-   // 1. UNTUK TAMPILAN WEB ADMIN (Browser)
    public function index() {
     $setting = OfficeSetting::first(); 
     return view('admin.attendance.settings', compact('setting')); 
    }
 
-   // 2. KHUSUS UNTUK API FLUTTER (Sudah tambah check_out_time)
    public function getConfig() {
     $setting = OfficeSetting::first(); 
     return response()->json([
@@ -23,7 +21,7 @@ class OfficeSettingController extends Controller
             'longitude' => $setting->longitude,
             'radius' => $setting->radius,
             'check_in_time' => $setting->check_in_time, 
-            'check_out_time' => $setting->check_out_time, // TAMBAHKAN INI
+            'check_out_time' => $setting->check_out_time, 
             'late_tolerance' => $setting->late_tolerance,
         ]
     ]);
@@ -36,7 +34,7 @@ class OfficeSettingController extends Controller
         'longitude' => 'required',
         'radius' => 'required|numeric',
         'check_in_time' => 'required',
-        'check_out_time' => 'required', // TAMBAHKAN VALIDASI
+        'check_out_time' => 'required', 
         'late_tolerance' => 'required|numeric',
     ]);
 
@@ -47,7 +45,7 @@ class OfficeSettingController extends Controller
             'longitude'      => $request->longitude,
             'radius'         => $request->radius,
             'check_in_time'  => $request->check_in_time,
-            'check_out_time' => $request->check_out_time, // SIMPAN KE DATABASE
+            'check_out_time' => $request->check_out_time,
             'late_tolerance' => $request->late_tolerance,
         ]
     );
