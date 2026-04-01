@@ -9,9 +9,17 @@ use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        // Ambil data karyawan
         $users = User::with('division')->where('role', 'karyawan')->get();
+
+        // CEK: Jika permintaan datang dari API (Flutter), kirim JSON
+        if ($request->expectsJson()) {
+            return response()->json($users);
+        }
+
+        // Jika dari Web, kirim tampilan Blade biasa
         $divisions = Division::all();
         return view('kepala.user.index', compact('users', 'divisions'));
     }

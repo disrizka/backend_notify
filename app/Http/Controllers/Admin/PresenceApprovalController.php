@@ -80,15 +80,53 @@ public function index(Request $request)
     /**
      * 4. Sub-menu: Riwayat Presensi
      */
-    public function history()
-    {
-        $history = Presence::with('user')
-            ->where('is_approved', 'approved')
-            ->orderBy('date', 'desc')
-            ->get();
-            
-        return view('admin.attendance.history', compact('history'));
+    public function history(Request $request)
+{
+    $selectedMonth = (int) $request->query('month', now()->month);
+    $selectedYear  = (int) $request->query('year',  now()->year);
+    $search        = $request->query('search');
+ 
+    $months = [
+        'Januari','Februari','Maret','April','Mei','Juni',
+        'Juli','Agustus','September','Oktober','November','Desember'
+    ];
+ 
+    // Ambil semua karyawan (+ divisi), filter nama jika ada
+    $usersQuery = \App\Models\User::with('division')
+        ->where('role', 'karyawan');
+ 
+    if ($search) {
+        $usersQuery->where('name', 'like', "%{$search}%");
     }
+ 
+    $users = $usersQuery->orderBy('name')->get();
+ 
+    // Ambil semua presensi bulan ini untuk karyawan yang ditemukan
+    $allPresences = \App\Models\Presence::whereIn('user_id', $users->pluck('id'))
+        ->whereMonth('date', $selectedMonth)
+        ->whereYear('date',  $selectedYear)
+        ->orderBy('date', 'desc')
+        ->get();
+ 
+    // Group by user_id
+    $presenceData = $allPresences->groupBy('user_id');
+ 
+    // Hitung total statistik
+    $totalApproved = $allPresences->where('is_approved', 'approved')->count();
+    $totalPending  = $allPresences->where('is_approved', 'pending')->count();
+    $totalRejected = $allPresences->where('is_approved', 'rejected')->count();
+ 
+    return view('admin.attendance.history', compact(
+        'users',
+        'presenceData',
+        'selectedMonth',
+        'selectedYear',
+        'months',
+        'totalApproved',
+        'totalPending',
+        'totalRejected'
+    ));
+}
 
     /**
      * 5. Settings Absensi

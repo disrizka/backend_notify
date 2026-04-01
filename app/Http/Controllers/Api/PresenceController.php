@@ -123,19 +123,68 @@ class PresenceController extends Controller
 
     public function todayStatus(Request $request)
 {
-    $user = $request->user();
+    $user  = $request->user();
     $today = now()->format('Y-m-d');
 
-    $presence = Presence::where('user_id', $user->id)
-        ->where('date', $today)
-        ->where('category', 'masuk')
+    // Ambil record IN
+    $presenceIn = \App\Models\Presence::where('user_id', $user->id)
+        ->whereDate('date', $today)
+        ->where(function($q) {
+            $q->whereNotNull('check_in')
+              ->orWhere('notes', 'like', '%Masuk%')
+              ->orWhere('notes', 'like', '%masuk%');
+        })
+        ->orderBy('id')
         ->first();
 
+    // Ambil record OUT (bisa row berbeda)
+    $presenceOut = \App\Models\Presence::where('user_id', $user->id)
+        ->whereDate('date', $today)
+        ->whereNotNull('check_out')
+        ->orderBy('id', 'desc')
+        ->first();
+
+    // Fallback: kalau check_out ada di row yang sama dengan check_in
+    $checkOut = $presenceOut?->check_out ?? $presenceIn?->check_out;
+
     return response()->json([
-        'has_checkin'  => $presence !== null,
-        'has_checkout' => $presence?->check_out !== null,
-        'check_in'     => $presence?->check_in,
-        'check_out'    => $presence?->check_out,
+        'has_checkin'  => $presenceIn !== null,
+        'has_checkout' => $checkOut !== null,
+        'check_in'     => $presenceIn?->check_in,
+        'check_out'    => $checkOut,
     ]);
+}
+
+public function history(Request $request)
+{
+    $user  = $request->user();
+    $month = (int) $request->query('month', now()->month);
+    $year  = (int) $request->query('year', now()->year);
+
+    // Ambil semua record bulan ini
+    $records = \App\Models\Presence::where('user_id', $user->id)
+        ->whereMonth('date', $month)
+        ->whereYear('date', $year)
+        ->orderBy('date', 'desc')
+        ->orderBy('id', 'asc')
+        ->get();
+
+    // Group by date, merge IN + OUT jadi 1 entry per hari
+    $grouped = $records->groupBy('date')->map(function ($rows) {
+        $inRow  = $rows->whereNotNull('check_in')->first();
+        $outRow = $rows->whereNotNull('check_out')->first();
+
+        return [
+            'id'          => $inRow?->id ?? $rows->first()->id,
+            'date'        => $rows->first()->date,
+            'check_in'    => $inRow?->check_in,
+            'check_out'   => $outRow?->check_out,
+            'is_approved' => $inRow?->is_approved ?? $rows->first()->is_approved,
+            'notes'       => $inRow?->notes,
+            'notes_out'   => $outRow?->notes ?? $outRow?->notes_out,
+        ];
+    })->values();
+
+    return response()->json($grouped);
 }
 }
