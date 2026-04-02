@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use App\Models\Chat;
+use App\Models\User;
+use App\Notifications\InternalNotification;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChatController extends Controller
@@ -21,95 +23,91 @@ class ChatController extends Controller
 
     public function store(Request $request)
     {
-        try {
-            $request->validate([
-                'type' => 'required|string',
-                'file' => 'nullable|file|max:102400', // max 100MB
-            ]);
+        $request->validate([
+            'type' => 'required',
+            'file' => 'nullable|file|max:10240',
+        ]);
 
-            $path = null;
-            if ($request->hasFile('file')) {
-                $file = $request->file('file');
-                $disk = Storage::disk('public');
-
-                // Pastikan folder uploads ada
-                if (!$disk->exists('uploads')) {
-                    $disk->makeDirectory('uploads');
-                }
-
-                $path = $file->store('uploads', 'public');
-
-                // Validasi file benar-benar tersimpan
-                if (!$disk->exists($path)) {
-                    return response()->json(['error' => 'File gagal disimpan ke storage'], 500);
-                }
-            }
-
-            $chat = Chat::create([
-                'user_id'   => auth()->id(),
-                'message'   => $request->message ?? '',
-                'type'      => $request->type,
-                'file_path' => $path,
-                'parent_id' => $request->parent_id ?? null,
-            ]);
-
-            // WAJIB: load relasi agar Flutter tidak crash saat render
-            $chat->load(['user:id,name', 'parent.user:id,name']);
-
-            return response()->json($chat, 201);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json([
-                'error'   => 'Validasi gagal',
-                'details' => $e->errors()
-            ], 422);
-
-        } catch (\Exception $e) {
-            \Log::error('ChatController@store error: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+        $path = null;
+        if ($request->hasFile('file')) {
+            $file = $request->file('file');
+            // Buat nama file unik agar tidak bentrok
+            $fileName = time() . '_' . $file->getClientOriginalName();
+            
+            // PINDAHKAN file langsung ke folder public/uploads (solusi 404 Windows)
+            $file->move(public_path('uploads'), $fileName);
+            
+            // Simpan path relatifnya
+            $path = 'uploads/' . $fileName; 
         }
+
+        // 1. Simpan Chat ke Database
+        $chat = Chat::create([
+            'user_id'   => auth()->id(),
+            'message'   => $request->message,
+            'type'      => $request->type,
+            'file_path' => $path, 
+            'parent_id' => $request->parent_id,
+        ]);
+
+        // 2. LOGIKA NOTIFIKASI
+        // Kirim notifikasi ke semua user selain pengirim (Group Chat Mode)
+        // Jika ingin spesifik ke satu orang, ganti User::all() menjadi penerima saja.
+        $users = User::where('id', '!=', auth()->id())->get();
+        
+        $notificationData = [
+            'title'   => 'Pesan Baru dari ' . auth()->user()->name,
+            'message' => $request->type == 'text' ? $request->message : 'Mengirim sebuah ' . $request->type,
+            'type'    => 'chat'
+        ];
+
+        foreach ($users as $user) {
+            $user->notify(new InternalNotification($notificationData));
+        }
+
+        return response()->json($chat->load('user'), 201);
     }
 
     /**
      * Stream video/audio dengan support Range Request
-     * Wajib untuk video player di Android/iOS
-     * Route: GET /api/stream/{path}
+     * Digunakan untuk file yang berada di folder storage
      */
     public function stream(Request $request, $path)
     {
-        // Decode path (karena '/' di-encode jadi '%2F')
         $filePath = urldecode($path);
-        $disk     = Storage::disk('public');
-
-        if (!$disk->exists($filePath)) {
-            return response()->json(['error' => 'File tidak ditemukan'], 404);
+        
+        // Cek apakah file ada di public/uploads dulu (karena kita pindah ke public)
+        if (file_exists(public_path($filePath))) {
+            $fullPath = public_path($filePath);
+            $fileSize = filesize($fullPath);
+            $mimeType = mime_content_type($fullPath);
+        } else {
+            // Backup ke storage disk jika tidak ada di public
+            $disk = Storage::disk('public');
+            if (!$disk->exists($filePath)) {
+                return response()->json(['error' => 'File tidak ditemukan'], 404);
+            }
+            $fullPath = $disk->path($filePath);
+            $fileSize = $disk->size($filePath);
+            $mimeType = $disk->mimeType($filePath);
         }
 
-        $fullPath = $disk->path($filePath);
-        $fileSize = $disk->size($filePath);
-        $mimeType = $disk->mimeType($filePath);
-
-        // Handle Range Request (wajib untuk video streaming)
         $start = 0;
         $end   = $fileSize - 1;
 
         $headers = [
-            'Content-Type'              => $mimeType,
-            'Accept-Ranges'             => 'bytes',
-            'Cache-Control'             => 'no-cache, no-store',
+            'Content-Type'                => $mimeType,
+            'Accept-Ranges'               => 'bytes',
+            'Cache-Control'               => 'no-cache, no-store',
             'Access-Control-Allow-Origin' => '*',
         ];
 
         if ($request->hasHeader('Range')) {
-            // Parse header Range: bytes=start-end
             $range = $request->header('Range');
             preg_match('/bytes=(\d+)-(\d*)/', $range, $matches);
 
             $start = intval($matches[1]);
-            $end   = isset($matches[2]) && $matches[2] !== ''
-                ? intval($matches[2])
-                : $fileSize - 1;
-
+            $end   = isset($matches[2]) && $matches[2] !== '' ? intval($matches[2]) : $fileSize - 1;
             $length = $end - $start + 1;
 
             $headers['Content-Range']  = "bytes $start-$end/$fileSize";
@@ -126,10 +124,9 @@ class ChatController extends Controller
                     flush();
                 }
                 fclose($fp);
-            }, 206, $headers); // 206 Partial Content
+            }, 206, $headers);
         }
 
-        // Request normal (bukan Range) — kirim seluruh file
         $headers['Content-Length'] = $fileSize;
 
         return response()->stream(function () use ($fullPath) {

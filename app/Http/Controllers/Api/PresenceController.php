@@ -5,13 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Presence;
 use App\Models\Leave;
+use App\Models\User;
+use App\Notifications\InternalNotification;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
 
 class PresenceController extends Controller
 {
     /**
-     * 1. Check-In (Masuk ke Tabel Presences)
+     * 1. Check-In (Masuk ke Tabel Presences + Notifikasi)
      */
     public function storeCheckIn(Request $request)
     {
@@ -30,13 +32,16 @@ class PresenceController extends Controller
 
         $path = null;
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('presence_photos', 'public');
+            // Gunakan move ke public agar mudah diakses di Windows/Flutter
+            $fileName = time() . '_in_' . $user->id . '.' . $request->file('photo')->getClientOriginalExtension();
+            $request->file('photo')->move(public_path('presence_photos'), $fileName);
+            $path = 'presence_photos/' . $fileName;
         }
 
         $presence = Presence::create([
             'user_id'     => $user->id,
             'date'        => $today,
-            'category'    => 'masuk', // Kategori wajib agar terpisah dari izin
+            'category'    => 'masuk',
             'check_in'    => now()->format('H:i:s'),
             'photo_in'    => $path,
             'lat_in'      => $request->latitude,
@@ -45,11 +50,18 @@ class PresenceController extends Controller
             'is_approved' => 'pending'
         ]);
 
+        // KIRIM NOTIFIKASI KE USER SENDIRI (Konfirmasi)
+        $user->notify(new InternalNotification([
+            'title'   => 'Presensi Masuk Berhasil',
+            'message' => 'Anda berhasil Check-In pada jam ' . now()->format('H:i'),
+            'type'    => 'presence'
+        ]));
+
         return response()->json(['success' => true, 'message' => 'Check-in berhasil!', 'data' => $presence], 201);
     }
 
     /**
-     * 2. Check-Out (Update Tabel Presences)
+     * 2. Check-Out (Update Tabel Presences + Notifikasi)
      */
     public function storeCheckOut(Request $request)
     {
@@ -65,8 +77,9 @@ class PresenceController extends Controller
         }
 
         if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('presence_photos', 'public');
-            $presence->photo_out = $path;
+            $fileName = time() . '_out_' . $user->id . '.' . $request->file('photo')->getClientOriginalExtension();
+            $request->file('photo')->move(public_path('presence_photos'), $fileName);
+            $presence->photo_out = 'presence_photos/' . $fileName;
         }
 
         $presence->check_out = now()->format('H:i:s');
@@ -75,6 +88,13 @@ class PresenceController extends Controller
         $presence->notes_out = $request->notes ?? 'Absen Pulang';
 
         if ($presence->save()) {
+            // KIRIM NOTIFIKASI
+            $user->notify(new InternalNotification([
+                'title'   => 'Presensi Pulang Berhasil',
+                'message' => 'Terima kasih, Anda telah Check-Out jam ' . now()->format('H:i'),
+                'type'    => 'presence'
+            ]));
+
             return response()->json(['success' => true, 'message' => 'Check-out berhasil!', 'data' => $presence], 200);
         }
 
@@ -82,14 +102,13 @@ class PresenceController extends Controller
     }
 
     /**
-     * 3. Izin/Sakit/Cuti (Masuk ke Tabel Leaves)
+     * 3. Izin/Sakit/Cuti (Masuk ke Tabel Leaves + Notifikasi)
      */
     public function storePermission(Request $request)
     {
         $user = $request->user();
         $startDate = $request->start_date;
 
-        // Cek apakah sudah absen masuk di tabel presences pada tanggal yang diajukan
         $alreadyPresent = Presence::where('user_id', $user->id)
             ->whereDate('date', $startDate)
             ->where('category', 'masuk')
@@ -104,87 +123,62 @@ class PresenceController extends Controller
 
         $attachment = null;
         if ($request->hasFile('attachment')) {
-            $attachment = $request->file('attachment')->store('leaves', 'public');
+            $fileName = time() . '_leave_' . $user->id . '.' . $request->file('attachment')->getClientOriginalExtension();
+            $request->file('attachment')->move(public_path('leaves'), $fileName);
+            $attachment = 'leaves/' . $fileName;
         }
 
-        // SIMPAN KE TABEL LEAVES
         $leave = Leave::create([
             'user_id'         => $user->id,
-            'type'            => strtolower($request->category), // sakit, cuti, atau izin
+            'type'            => strtolower($request->category), 
             'start_date'      => $request->start_date,
             'end_date'        => $request->end_date ?? $request->start_date,
-            'reason'          => $request->notes, // Flutter kirim 'notes'
+            'reason'          => $request->notes, 
             'attachment_file' => $attachment, 
             'status'          => 'pending',
         ]);
 
-        return response()->json(['success' => true, 'message' => 'Laporan berhasil terkirim ke tabel leaves'], 201);
+        // KIRIM NOTIFIKASI
+        $user->notify(new InternalNotification([
+            'title'   => 'Pengajuan ' . ucfirst($request->category) . ' Terkirim',
+            'message' => 'Laporan Anda sedang menunggu persetujuan admin.',
+            'type'    => 'presence'
+        ]));
+
+        return response()->json(['success' => true, 'message' => 'Laporan berhasil terkirim'], 201);
     }
 
+    // --- Fungsi Status & History Tetap Sama ---
     public function todayStatus(Request $request)
-{
-    $user  = $request->user();
-    $today = now()->format('Y-m-d');
+    {
+        $user  = $request->user();
+        $today = now()->format('Y-m-d');
 
-    // Ambil record IN
-    $presenceIn = \App\Models\Presence::where('user_id', $user->id)
-        ->whereDate('date', $today)
-        ->where(function($q) {
-            $q->whereNotNull('check_in')
-              ->orWhere('notes', 'like', '%Masuk%')
-              ->orWhere('notes', 'like', '%masuk%');
-        })
-        ->orderBy('id')
-        ->first();
+        $presenceIn = Presence::where('user_id', $user->id)
+            ->whereDate('date', $today)
+            ->where('category', 'masuk')
+            ->first();
 
-    // Ambil record OUT (bisa row berbeda)
-    $presenceOut = \App\Models\Presence::where('user_id', $user->id)
-        ->whereDate('date', $today)
-        ->whereNotNull('check_out')
-        ->orderBy('id', 'desc')
-        ->first();
+        return response()->json([
+            'has_checkin'  => $presenceIn !== null,
+            'has_checkout' => $presenceIn?->check_out !== null,
+            'check_in'     => $presenceIn?->check_in,
+            'check_out'    => $presenceIn?->check_out,
+        ]);
+    }
 
-    // Fallback: kalau check_out ada di row yang sama dengan check_in
-    $checkOut = $presenceOut?->check_out ?? $presenceIn?->check_out;
+    public function history(Request $request)
+    {
+        $user  = $request->user();
+        $month = (int) $request->query('month', now()->month);
+        $year  = (int) $request->query('year', now()->year);
 
-    return response()->json([
-        'has_checkin'  => $presenceIn !== null,
-        'has_checkout' => $checkOut !== null,
-        'check_in'     => $presenceIn?->check_in,
-        'check_out'    => $checkOut,
-    ]);
-}
+        $records = Presence::where('user_id', $user->id)
+            ->whereMonth('date', $month)
+            ->whereYear('date', $year)
+            ->orderBy('date', 'desc')
+            ->get();
 
-public function history(Request $request)
-{
-    $user  = $request->user();
-    $month = (int) $request->query('month', now()->month);
-    $year  = (int) $request->query('year', now()->year);
-
-    // Ambil semua record bulan ini
-    $records = \App\Models\Presence::where('user_id', $user->id)
-        ->whereMonth('date', $month)
-        ->whereYear('date', $year)
-        ->orderBy('date', 'desc')
-        ->orderBy('id', 'asc')
-        ->get();
-
-    // Group by date, merge IN + OUT jadi 1 entry per hari
-    $grouped = $records->groupBy('date')->map(function ($rows) {
-        $inRow  = $rows->whereNotNull('check_in')->first();
-        $outRow = $rows->whereNotNull('check_out')->first();
-
-        return [
-            'id'          => $inRow?->id ?? $rows->first()->id,
-            'date'        => $rows->first()->date,
-            'check_in'    => $inRow?->check_in,
-            'check_out'   => $outRow?->check_out,
-            'is_approved' => $inRow?->is_approved ?? $rows->first()->is_approved,
-            'notes'       => $inRow?->notes,
-            'notes_out'   => $outRow?->notes ?? $outRow?->notes_out,
-        ];
-    })->values();
-
-    return response()->json($grouped);
-}
+        return response()->json($records);
+    }
 }
