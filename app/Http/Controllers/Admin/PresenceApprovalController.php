@@ -56,15 +56,21 @@ public function index(Request $request)
         Leave::findOrFail($id)->update(['status' => 'rejected']);
         return back()->with('success', 'Pengajuan izin ditolak.');
     }
+    
+
     public function updateStatus(Request $request, $id, $status)
     {
-        $presence = Presence::findOrFail($id);
-        
         if (!in_array($status, ['approved', 'rejected', 'pending'])) {
             return back()->with('error', 'Status tidak valid!');
         }
 
-        $presence->update(['is_approved' => $status]);
+        $type = $request->input('type', 'in');
+
+        if ($type === 'out') {
+            \DB::table('presences')->where('id', $id)->update(['is_approved_out' => $status]);
+        } else {
+            \DB::table('presences')->where('id', $id)->update(['is_approved' => $status]);
+        }
 
         return back()->with('success', 'Status berhasil diperbarui!');
     }
@@ -112,7 +118,7 @@ public function index(Request $request)
     $presenceData = $allPresences->groupBy('user_id');
  
     // Hitung total statistik
-    $totalApproved = $allPresences->where('is_approved', 'approved')->count();
+    $totalApproved = $allPresences->where('is_approved', 'approved')->whereNotNull('check_out')->count();
     $totalPending  = $allPresences->where('is_approved', 'pending')->count();
     $totalRejected = $allPresences->where('is_approved', 'rejected')->count();
  

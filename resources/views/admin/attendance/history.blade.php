@@ -5,13 +5,11 @@
 * { font-family: 'Plus Jakarta Sans', sans-serif; }
 .mono { font-family: 'JetBrains Mono', monospace; }
 
-/* ── Page background ── */
 .attendance-bg {
     background: linear-gradient(135deg, #ffffff 0%, #ffffff 50%, #ffffff 100%);
     min-height: 100vh;
 }
 
-/* ── Hero header ── */
 .page-hero {
     background: linear-gradient(135deg, #1a237e 0%, #1565c0 45%, #0288d1 100%);
     border-radius: 24px;
@@ -37,18 +35,6 @@
     border-radius: 50%;
 }
 
-/* ── Stat cards ── */
-.stat-card {
-    background: white;
-    border-radius: 18px;
-    padding: 20px 22px;
-    box-shadow: 0 4px 20px rgba(21,101,192,0.08);
-    border: 1px solid rgba(21,101,192,0.06);
-    transition: transform 0.2s, box-shadow 0.2s;
-}
-.stat-card:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(21,101,192,0.14); }
-
-/* ── Filter bar ── */
 .filter-bar {
     background: white;
     border-radius: 18px;
@@ -87,7 +73,6 @@
 }
 .filter-btn:hover { opacity: 0.9; transform: translateY(-1px); }
 
-/* ── Employee card ── */
 .emp-card {
     background: white;
     border-radius: 20px;
@@ -136,6 +121,7 @@
 .badge-amber  { background: #fff8e1; color: #e65100; border: 1px solid #ffe0b2; }
 .badge-red    { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
 .badge-blue   { background: #e3f2fd; color: #1565c0; border: 1px solid #bbdefb; }
+.badge-gray   { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
 
 .toggle-icon {
     width: 32px; height: 32px;
@@ -147,7 +133,6 @@
 }
 .toggle-icon.open { transform: rotate(180deg); background: rgba(21,101,192,0.15); }
 
-/* ── Timeline table ── */
 .emp-body {
     display: none;
     padding: 0 22px 18px;
@@ -174,7 +159,6 @@
     text-transform: uppercase;
     padding: 10px 14px;
     text-align: left;
-    border-radius: 0;
 }
 .presence-table th:first-child { border-radius: 10px 0 0 10px; }
 .presence-table th:last-child  { border-radius: 0 10px 10px 0; }
@@ -217,7 +201,6 @@
     margin-right: 5px;
 }
 
-/* ── Empty state ── */
 .empty-row td {
     text-align: center;
     padding: 32px;
@@ -225,32 +208,6 @@
     font-size: 13px;
 }
 
-/* ── Pagination ── */
-.pagination-wrap {
-    display: flex;
-    justify-content: center;
-    gap: 6px;
-    margin-top: 24px;
-}
-.page-btn {
-    width: 36px; height: 36px;
-    border-radius: 10px;
-    border: 1.5px solid #ffffff;
-    background: white;
-    color: #1565c0;
-    font-size: 13px;
-    font-weight: 700;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.2s;
-}
-.page-btn:hover, .page-btn.active {
-    background: #1565c0;
-    border-color: #1565c0;
-    color: white;
-}
-
-/* ── Responsive ── */
 @media (max-width: 640px) {
     .page-hero { padding: 22px 20px; }
     .filter-bar { flex-direction: column; align-items: stretch; }
@@ -262,7 +219,7 @@
 
 <div class="attendance-bg p-4 md:p-8">
 
-    {{-- ── HERO HEADER ─────────────────────────────────────────────────── --}}
+    {{-- ── HERO HEADER ── --}}
     <div class="page-hero">
         <div class="relative z-10 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -300,28 +257,25 @@
         </div>
     </div>
 
-    {{-- ── FILTER BAR ───────────────────────────────────────────────────── --}}
+    {{-- ── FILTER BAR ── --}}
     <form method="GET" action="{{ route('admin.presence.history') }}" class="filter-bar">
         <svg width="18" height="18" fill="none" stroke="#1565c0" stroke-width="2" viewBox="0 0 24 24" style="flex-shrink:0;">
             <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
         </svg>
         <span style="font-size:13px;font-weight:700;color:#1565c0;white-space:nowrap;">Filter:</span>
 
-        {{-- Bulan --}}
         <select name="month" style="min-width:130px;">
             @foreach($months as $i => $name)
                 <option value="{{ $i+1 }}" {{ $selectedMonth == $i+1 ? 'selected' : '' }}>{{ $name }}</option>
             @endforeach
         </select>
 
-        {{-- Tahun --}}
         <select name="year" style="min-width:100px;">
             @for($y = date('Y'); $y >= date('Y') - 3; $y--)
                 <option value="{{ $y }}" {{ $selectedYear == $y ? 'selected' : '' }}>{{ $y }}</option>
             @endfor
         </select>
 
-        {{-- Search nama --}}
         <div style="flex:1;min-width:160px;position:relative;">
             <svg width="14" height="14" fill="none" stroke="#8a99b5" stroke-width="2" viewBox="0 0 24 24"
                 style="position:absolute;left:12px;top:50%;transform:translateY(-50%);">
@@ -332,9 +286,7 @@
                 style="width:100%;padding-left:34px;">
         </div>
 
-        <button type="submit" class="filter-btn">
-            Tampilkan
-        </button>
+        <button type="submit" class="filter-btn">Tampilkan</button>
 
         @if(request('search') || request('month') || request('year'))
         <a href="{{ route('admin.presence.history') }}"
@@ -344,19 +296,25 @@
         @endif
     </form>
 
-    {{-- ── EMPLOYEE LIST ────────────────────────────────────────────────── --}}
+    {{-- ── EMPLOYEE LIST ── --}}
     @forelse($users as $user)
     @php
-        $records   = $presenceData[$user->id] ?? collect();
-        $approved  = $records->where('is_approved', 'approved')->count();
-        $pending   = $records->where('is_approved', 'pending')->count();
-        $rejected  = $records->where('is_approved', 'rejected')->count();
-        $initials  = collect(explode(' ', $user->name))->take(2)->map(fn($w) => strtoupper($w[0]))->join('');
+        $records  = $presenceData[$user->id] ?? collect();
+
+        // Hadir = approved IN + sudah ada check_out
+        $approved = $records->where('is_approved', 'approved')->whereNotNull('check_out')->count();
+
+        // Belum Check Out = approved IN tapi check_out masih null
+        $belumOut = $records->where('is_approved', 'approved')->whereNull('check_out')->count();
+
+        $pending  = $records->where('is_approved', 'pending')->count();
+        $rejected = $records->where('is_approved', 'rejected')->count();
+
+        $initials = collect(explode(' ', $user->name))->take(2)->map(fn($w) => strtoupper($w[0]))->join('');
     @endphp
 
     <div class="emp-card" x-data="{ open: false }">
 
-        {{-- Employee header --}}
         <div class="emp-header" @click="open = !open">
             <div style="display:flex;align-items:center;gap:14px;flex:1;min-width:0;">
                 <div class="emp-avatar">{{ $initials }}</div>
@@ -373,24 +331,39 @@
             </div>
             <div style="display:flex;align-items:center;gap:10px;">
                 <div class="emp-badges">
+                    {{-- Hadir: approved IN + sudah checkout --}}
                     @if($approved > 0)
                     <span class="badge badge-green">
                         <svg width="9" height="9" fill="#2e7d32" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $approved }} Hadir
                     </span>
                     @endif
+
+                    {{-- Belum Check Out: approved IN tapi belum checkout --}}
+                    @if($belumOut > 0)
+                    <span class="badge badge-blue">
+                        <svg width="9" height="9" fill="#1565c0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
+                        {{ $belumOut }} Belum Check Out
+                    </span>
+                    @endif
+
+                    {{-- Pending --}}
                     @if($pending > 0)
                     <span class="badge badge-amber">
                         <svg width="9" height="9" fill="#e65100" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $pending }} Pending
                     </span>
                     @endif
+
+                    {{-- Ditolak --}}
                     @if($rejected > 0)
                     <span class="badge badge-red">
                         <svg width="9" height="9" fill="#c62828" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $rejected }} Ditolak
                     </span>
                     @endif
+
+                    {{-- Tidak ada data --}}
                     @if($records->count() == 0)
                     <span class="badge" style="background:#f5f5f5;color:#9e9e9e;border:1px solid #e0e0e0;">
                         Tidak ada data
@@ -419,8 +392,10 @@
                         <th>Masuk</th>
                         <th>Pulang</th>
                         <th>Durasi</th>
-                        <th>Keterangan</th>
-                        <th>Status</th>
+                        <th>Ket. IN</th>
+                        <th>Ket. OUT</th>
+                        <th>Status IN</th>
+                        <th>Status OUT</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -430,7 +405,6 @@
                         $days = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
                         $dayName = $days[$dt->dayOfWeek == 0 ? 6 : $dt->dayOfWeek - 1];
 
-                        // Hitung durasi
                         $duration = '-';
                         if ($rec->check_in && $rec->check_out) {
                             $in  = \Carbon\Carbon::createFromTimeString($rec->check_in);
@@ -439,11 +413,20 @@
                             $duration = ($diff >= 60 ? floor($diff/60).'j ' : '') . ($diff%60) . 'm';
                         }
 
-                        $statusColor = match($rec->is_approved) {
+                        // Status IN
+                        $statusIn = match($rec->is_approved) {
                             'approved' => ['dot'=>'#4caf50','bg'=>'#e8f5e9','text'=>'#2e7d32','label'=>'Disetujui'],
                             'rejected' => ['dot'=>'#f44336','bg'=>'#ffebee','text'=>'#c62828','label'=>'Ditolak'],
                             default    => ['dot'=>'#ff9800','bg'=>'#fff8e1','text'=>'#e65100','label'=>'Pending'],
                         };
+
+                        // Status OUT
+                        $approvedOut = $rec->is_approved_out ?? 'pending';
+                        $statusOut = $rec->check_out ? match($approvedOut) {
+                            'approved' => ['dot'=>'#4caf50','bg'=>'#e8f5e9','text'=>'#2e7d32','label'=>'Disetujui'],
+                            'rejected' => ['dot'=>'#f44336','bg'=>'#ffebee','text'=>'#c62828','label'=>'Ditolak'],
+                            default    => ['dot'=>'#ff9800','bg'=>'#fff8e1','text'=>'#e65100','label'=>'Pending'],
+                        } : null;
                     @endphp
                     <tr>
                         <td>
@@ -488,22 +471,59 @@
                             <span style="color:#ccc;font-size:12px;">—</span>
                             @endif
                         </td>
+                        {{-- Keterangan IN --}}
                         <td style="max-width:140px;">
                             <span style="font-size:12px;color:#546e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:130px;"
-                                  title="{{ $rec->notes }}">
+                                title="{{ $rec->notes }}">
                                 {{ $rec->notes ?? '-' }}
                             </span>
                         </td>
-                        <td>
-                            <span style="display:inline-flex;align-items:center;gap:5px;background:{{ $statusColor['bg'] }};color:{{ $statusColor['text'] }};border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
-                                <span class="status-dot" style="background:{{ $statusColor['dot'] }};"></span>
-                                {{ $statusColor['label'] }}
+
+                        {{-- Keterangan OUT --}}
+                        <td style="max-width:140px;">
+                            @if($rec->check_out)
+                            <span style="font-size:12px;color:#546e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:130px;"
+                                title="{{ $rec->notes_out }}">
+                                {{ $rec->notes_out ?? '-' }}
                             </span>
+                            @else
+                            <span style="color:#ccc;font-size:12px;">—</span>
+                            @endif
+                        </td>
+
+                        {{-- Status IN --}}
+                        <td>
+                            <span style="display:inline-flex;align-items:center;gap:5px;
+                                background:{{ $statusIn['bg'] }};color:{{ $statusIn['text'] }};
+                                border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
+                                <span class="status-dot" style="background:{{ $statusIn['dot'] }};"></span>
+                                {{ $statusIn['label'] }}
+                            </span>
+                        </td>
+
+                        {{-- Status OUT --}}
+                        <td>
+                            @if(!$rec->check_out)
+                                {{-- Belum checkout --}}
+                                <span style="display:inline-flex;align-items:center;gap:5px;
+                                    background:#f3f4f6;color:#6b7280;
+                                    border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
+                                    <span class="status-dot" style="background:#9ca3af;"></span>
+                                    Belum Check Out
+                                </span>
+                            @else
+                                <span style="display:inline-flex;align-items:center;gap:5px;
+                                    background:{{ $statusOut['bg'] }};color:{{ $statusOut['text'] }};
+                                    border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
+                                    <span class="status-dot" style="background:{{ $statusOut['dot'] }};"></span>
+                                    {{ $statusOut['label'] }}
+                                </span>
+                            @endif
                         </td>
                     </tr>
                     @empty
                     <tr class="empty-row">
-                        <td colspan="7">
+                        <td colspan="9">
                             <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 0;">
                                 <svg width="40" height="40" fill="none" stroke="#ccc" stroke-width="1.5" viewBox="0 0 24 24">
                                     <rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>
@@ -520,7 +540,7 @@
     </div>
     @empty
     <div style="background:white;border-radius:20px;padding:60px 32px;text-align:center;box-shadow:0 3px 16px rgba(21,101,192,0.07);">
-        <svg width="64" height="64" fill="none" stroke="#ffffff" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 16px;">
+        <svg width="64" height="64" fill="none" stroke="#cccccc" stroke-width="1.5" viewBox="0 0 24 24" style="margin:0 auto 16px;">
             <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
             <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
