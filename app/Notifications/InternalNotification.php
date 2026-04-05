@@ -20,26 +20,17 @@ class InternalNotification extends Notification
         $this->details = $details;
     }
 
-    /**
-     * Tentukan channel pengiriman.
-     * Kita gunakan 'database' agar muncul di lonceng notifikasi aplikasi.
-     */
-    public function via(object $notifiable): array
+    public function via($notifiable)
     {
-        return ['database'];
+        return ['database']; 
     }
 
-    /**
-     * Data yang akan disimpan ke tabel 'notifications' di database.
-     */
-    // Ganti method toArray menjadi toDatabase di InternalNotification.php
-    public function toDatabase(object $notifiable): array
+    public function toArray($notifiable)
     {
         return [
-            'title'   => $this->details['title'],
-            'message' => $this->details['message'],
-            'type'    => $this->details['type'], 
-            'time'    => now()->format('H:i'),
+            'title'   => $this->data['title'],
+            'message' => $this->data['message'],
+            'type'    => $this->data['type'],
         ];
     }
 }

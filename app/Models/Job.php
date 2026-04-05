@@ -19,7 +19,6 @@ class Job extends Model
         'feedback'
     ];
 
-    // Relasi ke CS (User yang membuat tugas)
     public function cs()
     {
         return $this->belongsTo(User::class, 'cs_id');
@@ -33,5 +32,10 @@ class Job extends Model
     public function trackers()
     {
         return $this->hasMany(JobTracker::class);
+    }
+
+    public function comments()
+    {
+        return $this->hasMany(JobComment::class)->with('user')->latest();
     }
 }

@@ -7,50 +7,55 @@ use App\Http\Controllers\Api\PresenceController;
 use App\Http\Controllers\Admin\OfficeSettingController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\UserController; 
+use App\Http\Controllers\Api\JobApiController;
+use App\Http\Controllers\UserController;
 
 // Rute Publik
 Route::post('/login', [AuthApiController::class, 'login']);
 
-// Rute Terproteksi (Harus Login)
+// Rute Terproteksi
 Route::middleware('auth:sanctum')->group(function () {
-    
+
     // Auth & User
     Route::post('/logout', [AuthApiController::class, 'logout']);
     Route::get('/user', fn(Request $r) => $r->user());
     Route::get('/users', [UserController::class, 'index']);
 
-    // Presensi & Kehadiran
-    Route::post('/presence/check-in',     [PresenceController::class, 'storeCheckIn']);
-    Route::post('/presence/checkout',     [PresenceController::class, 'storeCheckOut']);
+    // Presensi
+    Route::post('/presence/check-in',    [PresenceController::class, 'storeCheckIn']);
+    Route::post('/presence/checkout',    [PresenceController::class, 'storeCheckOut']);
     Route::post('/presence/permissions', [PresenceController::class, 'storePermission']);
-    Route::get('/presence/today',         [PresenceController::class, 'todayStatus']);
-    Route::get('/presence/history',       [PresenceController::class, 'history']);
+    Route::get('/presence/today',        [PresenceController::class, 'todayStatus']);
+    Route::get('/presence/history',      [PresenceController::class, 'history']);
 
     // Konfigurasi Kantor
     Route::get('/attendance/config', [OfficeSettingController::class, 'getConfig']);
-    
-    // Chat Internal
-    Route::get('/chats', [ChatController::class, 'index']);
+
+    // Chat
+    Route::get('/chats',  [ChatController::class, 'index']);
     Route::post('/chats', [ChatController::class, 'store']);
 
-    // --- FITUR NOTIFIKASI ---
-    
-    // 1. Untuk Badge (Jumlah)
+    // Notifikasi
     Route::get('/notifications', function (Request $request) {
         return response()->json([
-            'unread_count' => $request->user()->unreadNotifications->count(),
+            'unread_count'  => $request->user()->unreadNotifications->count(),
             'notifications' => $request->user()->notifications()->take(10)->get()
         ]);
     });
-
-    // 2. Untuk Daftar di Halaman Notifikasi (PASTIKAN INI TERBACA)
-    Route::get('/notifications/list', [NotificationController::class, 'index']);
-    
-    // 3. Untuk Tandai Dibaca
+    Route::get('/notifications/list',     [NotificationController::class, 'index']);
     Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
+    Route::get('/notifications/count',    [NotificationController::class, 'getUnreadCount']);
 
     Route::put('/user/change-password', [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
 
-    Route::get('/notifications/count', [NotificationController::class, 'getUnreadCount']);
+    // Technician: lihat & update tugas
+    Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/jobs/active', [JobApiController::class, 'getActiveJobs']);
+    Route::get('/jobs/history', [JobApiController::class, 'getJobHistory']);
+    Route::get('/jobs/technicians', [JobApiController::class, 'getTechnicians']);
+    Route::post('/jobs', [JobApiController::class, 'createJob']);
+    Route::post('/jobs/{id}/accept', [JobApiController::class, 'acceptJob']);
+    Route::post('/jobs/{id}/progress', [JobApiController::class, 'updateProgress']);
+    Route::post('/jobs/{id}/comments', [JobApiController::class, 'addComment']);
+});
 });

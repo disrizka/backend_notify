@@ -6,24 +6,19 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
-        Schema::create('holidays', function (Blueprint $table) {
+        Schema::create('job_comments', function (Blueprint $table) {
             $table->id();
-            $table->date('holiday_date')->unique(); 
-            $table->string('name')->nullable();     
+            $table->foreignId('job_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->text('comment');
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
-        Schema::dropIfExists('holidays');
+        Schema::dropIfExists('job_comments');
     }
 };

@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Notifications\InternalNotification;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+use App\Models\Holiday;
 
 class PresenceController extends Controller
 {
@@ -20,6 +21,13 @@ class PresenceController extends Controller
         $user = $request->user();
         $today = now()->format('Y-m-d');
 
+        $isHoliday = Holiday::where('holiday_date', $today)->exists();
+        if ($isHoliday) {
+            return response()->json([
+                'success' => false, 
+                'message' => 'Hari ini kantor libur (Tanggal Merah). Anda tidak perlu absen masuk.'
+            ], 422);
+    }
         // Cek apakah hari ini sudah absen masuk
         $alreadyCheckedIn = Presence::where('user_id', $user->id)
             ->where('date', $today)
@@ -109,6 +117,14 @@ class PresenceController extends Controller
         $user = $request->user();
         $startDate = $request->start_date;
 
+        $isHoliday = Holiday::where('holiday_date', $startDate)->exists();
+        if ($isHoliday) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tanggal ' . $startDate . ' adalah hari libur kantor. Tidak perlu mengajukan izin.'
+            ], 422);
+        }
+
         $alreadyPresent = Presence::where('user_id', $user->id)
             ->whereDate('date', $startDate)
             ->where('category', 'masuk')
@@ -148,24 +164,38 @@ class PresenceController extends Controller
         return response()->json(['success' => true, 'message' => 'Laporan berhasil terkirim'], 201);
     }
 
-    // --- Fungsi Status & History Tetap Sama ---
     public function todayStatus(Request $request)
-    {
-        $user  = $request->user();
+{
+    try {
+        $user = $request->user();
         $today = now()->format('Y-m-d');
 
-        $presenceIn = Presence::where('user_id', $user->id)
+        // 1. Cek apakah tanggal hari ini ada di tabel holidays (yang merah di kalender)
+        $isHoliday = \App\Models\Holiday::where('holiday_date', $today)->exists();
+
+        // 2. Ambil data presensi jika ada (untuk info tombol di Flutter)
+        $presenceIn = \App\Models\Presence::where('user_id', $user->id)
             ->whereDate('date', $today)
             ->where('category', 'masuk')
             ->first();
 
+        // 3. Kembalikan Response JSON yang rapi
         return response()->json([
+            'success'      => true,
+            'is_holiday'   => $isHoliday, // INI KUNCINYA: Akan bernilai true atau false
             'has_checkin'  => $presenceIn !== null,
-            'has_checkout' => $presenceIn?->check_out !== null,
-            'check_in'     => $presenceIn?->check_in,
-            'check_out'    => $presenceIn?->check_out,
-        ]);
+            'has_checkout' => $presenceIn ? ($presenceIn->check_out !== null) : false,
+            'check_in'     => $presenceIn ? $presenceIn->check_in : null,
+            'check_out'    => $presenceIn ? $presenceIn->check_out : null,
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Terjadi kesalahan: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     public function history(Request $request)
     {
