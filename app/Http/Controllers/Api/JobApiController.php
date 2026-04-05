@@ -27,13 +27,9 @@ public function getActiveJobs(Request $request)
     return response()->json($this->formatJobs($jobs));
 }
 
-// app/Http/Controllers/Api/JobApiController.php
-
-// app/Http/Controllers/Api/JobApiController.php
 
 public function getJobHistory(Request $request)
 {
-    // Pastikan SEMUA riwayat muncul tanpa filter user_id
     $jobs = Job::with(['cs', 'technician', 'trackers', 'comments.user'])
         ->where('status', 'completed')
         ->latest()
@@ -41,7 +37,7 @@ public function getJobHistory(Request $request)
 
     return response()->json([
         'success' => true,
-        'data'    => $this->formatJobs($jobs) // Harus dibungkus 'data'
+        'data'    => $this->formatJobs($jobs) 
     ]);
 }
 

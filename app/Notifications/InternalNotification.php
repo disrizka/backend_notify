@@ -26,11 +26,11 @@ class InternalNotification extends Notification
     }
 
     public function toArray($notifiable)
-    {
-        return [
-            'title'   => $this->data['title'],
-            'message' => $this->data['message'],
-            'type'    => $this->data['type'],
-        ];
-    }
+{
+    return [
+        'title'   => $this->details['title'],    // ← was $this->data
+        'message' => $this->details['message'],  // ← was $this->data
+        'type'    => $this->details['type'],     // ← was $this->data
+    ];
+}
 }

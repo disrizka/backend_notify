@@ -7,42 +7,47 @@ use Illuminate\Http\Request;
 
 class NotificationController extends Controller
 {
-    // Ambil daftar notifikasi (15 terbaru)
+    /**
+     * Mengambil semua notifikasi user.
+     */
     public function index(Request $request)
-{
-    $notifications = $request->user()->notifications()->latest()->get()->map(function($n) {
-        return [
-            'id' => $n->id,
-            'title' => $n->data['title'] ?? 'No Title',
-            'message' => $n->data['message'] ?? '',
-            'type' => $n->data['type'] ?? 'general',
-            'is_read' => $n->read_at !== null,
-            'created_at' => $n->created_at->diffForHumans(),
-        ];
-    });
+    {
+        $notifications = $request->user()->notifications()->latest()->get()->map(function($n) {
+            return [
+                'id'         => $n->id,
+                'title'      => $n->data['title'] ?? 'No Title',
+                'message'    => $n->data['message'] ?? '',
+                'type'       => $n->data['type'] ?? 'general',
+                'is_read'    => $n->read_at !== null, // Hapus tulisan syntax error di sini
+                'created_at' => $n->created_at->diffForHumans(),
+            ];
+        });
 
-    return response()->json($notifications); // Ini mengembalikan array []
-}
+        return response()->json($notifications);
+    }
 
-    // Tandai semua sebagai dibaca
+    /**
+     * Menandai semua notifikasi yang belum dibaca menjadi sudah dibaca.
+     */
     public function markRead(Request $request)
     {
         $request->user()->unreadNotifications->markAsRead();
         return response()->json(['message' => 'Semua ditandai dibaca']);
     }
 
-    // Ambil jumlah unread sekaligus pesan paling baru untuk popup
-public function getUnreadCount(Request $request)
-{
-    $user = $request->user();
-    
-    // Ambil 1 notifikasi terbaru yang belum dibaca
-    $latest = $user->unreadNotifications()->latest()->first();
+    /**
+     * Mengambil jumlah notifikasi yang belum dibaca dan data terbaru.
+     */
+    public function getUnreadCount(Request $request)
+    {
+        $user = $request->user();
+        
+        $latest = $user->unreadNotifications()->latest()->first();
 
-    return response()->json([
-        'unread_count' => $user->unreadNotifications()->count(),
-        'latest_title' => $latest ? ($latest->data['title'] ?? 'Notifikasi Baru') : null,
-        'latest_message' => $latest ? ($latest->data['message'] ?? '') : null,
-    ]);
-}
+        return response()->json([
+            'unread_count'   => $user->unreadNotifications()->count(),
+            'latest_title'   => $latest ? ($latest->data['title'] ?? null) : null,
+            'latest_message' => $latest ? ($latest->data['message'] ?? null) : null,
+        ]);
+    }
 }
