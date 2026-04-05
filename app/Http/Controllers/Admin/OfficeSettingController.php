@@ -13,19 +13,36 @@ class OfficeSettingController extends Controller
     return view('admin.attendance.settings', compact('setting')); 
    }
 
-   public function getConfig() {
-    $setting = OfficeSetting::first(); 
+public function getConfig() {
+    $setting = OfficeSetting::first();
+    $today = now()->format('Y-m-d');
+    
+    // Ambil data libur dari database
+    $holiday = \DB::table('holidays')->where('holiday_date', $today)->first();
+    $isFriday = now()->isFriday(); 
+
+    // Logika penentuan status libur
+    $isHolidayStatus = ($holiday || $isFriday) ? true : false;
+    $name = '';
+    if ($isFriday) {
+        $name = 'Libur Mingguan (Jumat)';
+    } elseif ($holiday) {
+        $name = $holiday->name ?? 'Libur Kantor';
+    }
+
     return response()->json([
+        'success' => true,
         'data' => [
-            'latitude' => $setting->latitude,
-            'longitude' => $setting->longitude,
-            'radius' => $setting->radius,
-            'check_in_time' => $setting->check_in_time, 
-            'check_out_time' => $setting->check_out_time, 
-            'late_tolerance' => $setting->late_tolerance,
+            'latitude'       => (double) ($setting->latitude ?? -6.2000),
+            'longitude'      => (double) ($setting->longitude ?? 106.8166),
+            'radius'         => (double) ($setting->radius ?? 50.0),
+            'check_in_time'  => $setting->check_in_time ?? '08:00', 
+            'late_tolerance' => (int) ($setting->late_tolerance ?? 15),      
+            'is_holiday'     => $isHolidayStatus,
+            'holiday_name'   => $name,
         ]
     ]);
-   }
+}
 
    public function update(Request $request)
    {

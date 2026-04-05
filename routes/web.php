@@ -23,49 +23,49 @@ Route::get('/dashboard', function () {
 
 Route::middleware('auth')->group(function () {
 
-    // Profile
+    // ── Profile ──────────────────────────────────────────────────────────────
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
-    // Kehadiran (Kepala only)
+    // ── Kehadiran & Absensi (Kepala only) ──────────────────────────────────
     Route::middleware('role:kepala')->group(function () {
+        // Approval & Perizinan
         Route::get('/admin/attendance/approval', [PresenceApprovalController::class, 'index'])->name('admin.presence.index');
         Route::get('/admin/attendance/perizinan', [PresenceApprovalController::class, 'perizinan'])->name('admin.perizinan');
         Route::patch('/admin/attendance/approve/{id}', [PresenceApprovalController::class, 'leaveApprove'])->name('admin.presence.approve');
         Route::patch('/admin/attendance/reject/{id}', [PresenceApprovalController::class, 'leaveReject'])->name('admin.presence.reject');
         Route::post('/admin/attendance/approval/{id}/{status}', [PresenceApprovalController::class, 'updateStatus'])->name('admin.presence.updateStatus');
+        
+        // Jadwal Kerja (FullCalendar)
         Route::get('/admin/attendance/schedule', [PresenceApprovalController::class, 'schedule'])->name('admin.presence.schedule');
+        Route::post('/admin/attendance/schedule/toggle', [PresenceApprovalController::class, 'toggleHoliday'])->name('admin.presence.toggle'); // FIX ERROR DISINI
         Route::post('/admin/attendance/schedule/update', [PresenceApprovalController::class, 'updateSchedule'])->name('admin.presence.updateSchedule');
+        
+        // Riwayat & Pengaturan
         Route::get('/admin/attendance/history', [PresenceApprovalController::class, 'history'])->name('admin.presence.history');
         Route::get('/admin/attendance/settings', [OfficeSettingController::class, 'index'])->name('admin.presence.settings');
         Route::post('/admin/attendance/settings/update', [OfficeSettingController::class, 'update'])->name('admin.presence.updateSettings');
     });
 
-    // Division & User Management
+    // ── Division & User Management ──────────────────────────────────────────
     Route::resource('divisions', DivisionController::class);
     Route::resource('users-management', UserController::class);
 
-    // Job System (Kepala + CS bisa buat tugas)
+    // ── Job System ───────────────────────────────────────────────────────────
     Route::get('/jobs/create', [JobController::class, 'create'])->name('jobs.create');
     Route::post('/jobs', [JobController::class, 'store'])->name('jobs.store');
-
-    // Riwayat tugas - semua karyawan bisa akses
     Route::get('/jobs/history', [JobController::class, 'history'])->name('jobs.history');
-
-    // Feedback - hanya kepala
     Route::post('/jobs/{job}/feedback', [JobController::class, 'storeFeedback'])->name('jobs.feedback');
-
-    // Komentar - semua karyawan yang terlibat bisa komentar
     Route::post('/jobs/{job}/comment', [JobController::class, 'storeComment'])->name('jobs.comment');
     Route::delete('/job-comments/{comment}', [JobController::class, 'destroyComment'])->name('jobs.comment.destroy');
 
-    // Technician System
+    // ── Technician System ────────────────────────────────────────────────────
     Route::get('/technician/dashboard', [JobController::class, 'technicianDashboard'])->name('technician.dashboard');
     Route::post('/jobs/{job}/accept', [JobController::class, 'acceptJob'])->name('jobs.accept');
     Route::post('/jobs/{job}/progress', [JobController::class, 'updateProgress'])->name('jobs.progress');
 
-    // Checklist System
+    // ── Checklist System ─────────────────────────────────────────────────────
     Route::get('/admin/checklists/create', [ChecklistController::class, 'createTemplate'])->name('admin.createTemplate');
     Route::post('/admin/checklists/store', [ChecklistController::class, 'storeTemplate'])->name('admin.storeTemplate');
     Route::get('/admin/checklists', [ChecklistController::class, 'indexTemplate'])->name('admin.indexTemplate');

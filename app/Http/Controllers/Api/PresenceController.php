@@ -16,17 +16,21 @@ class PresenceController extends Controller
     /**
      * 1. Check-In (Masuk ke Tabel Presences + Notifikasi)
      */
-    public function storeCheckIn(Request $request)
-    {
-        $user = $request->user();
-        $today = now()->format('Y-m-d');
+    public function storeCheckIn(Request $request) 
+{
+    $today = now()->format('Y-m-d');
 
-        $isHoliday = Holiday::where('holiday_date', $today)->exists();
-        if ($isHoliday) {
-            return response()->json([
-                'success' => false, 
-                'message' => 'Hari ini kantor libur (Tanggal Merah). Anda tidak perlu absen masuk.'
-            ], 422);
+    // 1. Cek apakah hari ini terdaftar sebagai Libur Manual di tabel holidays
+    $isManualHoliday = \DB::table('holidays')->where('holiday_date', $today)->exists();
+
+    // 2. Cek apakah hari ini adalah hari Jumat (Libur Mingguan Otomatis)
+    $isFriday = now()->isFriday();
+
+    if ($isManualHoliday || $isFriday) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Hari ini adalah hari libur. Anda tidak diperbolehkan melakukan absensi.'
+        ], 403); // Return 403 Forbidden
     }
         // Cek apakah hari ini sudah absen masuk
         $alreadyCheckedIn = Presence::where('user_id', $user->id)
