@@ -66,63 +66,61 @@ class JobApiController extends Controller
     }
 
         public function updateProgress(Request $request, $id)
-        {
-            $job = Job::findOrFail($id);
-            $user = auth()->user(); // Ambil data user yang sedang login
+    {
+        $job = Job::findOrFail($id);
+        $user = auth()->user(); 
 
-            // ─── TAMBAHKAN VALIDASI INI ───
-            // Cek apakah user yang login adalah teknisi yang ditugaskan untuk tugas ini
-            if ($job->technician_id !== $user->id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Maaf, hanya teknisi yang ditugaskan yang dapat memperbarui tugas ini.'
-                ], 403); // 403: Forbidden
-            }
-
-            // 1. Hitung langkah berikutnya secara otomatis
-            $lastStep = \App\Models\JobTracker::where('job_id', $job->id)->max('step_number') ?? 0;
-            $nextStep = $lastStep + 1;
-
-            // Tambahan: Cegah update jika sudah lewat tahap 4
-            if ($lastStep >= 4) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Tugas ini sudah selesai dikerjakan.'
-                ], 400);
-            }
-
-            $photoPath = null;
-            if ($request->hasFile('photo')) {
-                $file = $request->file('photo');
-                $fileName = time() . '_step' . $nextStep . '.' . $file->getClientOriginalExtension();
-                $file->move(public_path('job_photos'), $fileName);
-                $photoPath = 'job_photos/' . $fileName;
-            }
-
-            // 2. Simpan ke Tracker
-            \App\Models\JobTracker::create([
-                'job_id' => $job->id,
-                'step_number' => $nextStep,
-                'description_value' => $request->description_value,
-                'photo_path' => $photoPath,
-            ]);
-
-            // 3. Update Job (naikkan step)
-            $job->update([
-                'current_step' => $nextStep,
-                'status' => ($nextStep >= 4) ? 'completed' : 'process'
-            ]);
-
+        // 1. Validasi: Hanya teknisi yang ditunjuk yang bisa kerja
+        if ($job->technician_id !== $user->id) {
             return response()->json([
-                'success' => true,
-                'message' => "Langkah $nextStep berhasil diperbarui",
-                // Tambahkan data job terbaru agar Flutter bisa langsung update UI
-                'job' => $job->load(['trackers', 'cs', 'technician']) 
-            ]);
+                'success' => false,
+                'message' => 'Maaf, hanya teknisi yang ditugaskan yang dapat memperbarui tugas ini.'
+            ], 403);
         }
-    /**
-     * Ambil daftar teknisi non-CS (untuk CS buat tugas)
-     */
+
+        // 2. Hitung langkah berikutnya
+        $lastStep = \App\Models\JobTracker::where('job_id', $job->id)->max('step_number') ?? 0;
+        $nextStep = $lastStep + 1;
+
+        if ($lastStep >= 4) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tugas ini sudah selesai dikerjakan.'
+            ], 400);
+        }
+
+        // 3. Olah Foto
+        $photoPath = null;
+        if ($request->hasFile('photo')) {
+            $file = $request->file('photo');
+            $fileName = time() . '_step' . $nextStep . '.' . $file->getClientOriginalExtension();
+            $file->move(public_path('job_photos'), $fileName);
+            $photoPath = 'job_photos/' . $fileName;
+        }
+
+        // 4. Simpan ke Tracker
+        \App\Models\JobTracker::create([
+            'job_id' => $job->id,
+            'step_number' => $nextStep,
+            'description_value' => $request->description_value,
+            'photo_path' => $photoPath,
+        ]);
+
+        // 5. Update status Job
+        $job->update([
+            'current_step' => $nextStep,
+            'status' => ($nextStep >= 4) ? 'completed' : 'process'
+        ]);
+
+        // 6. Response (Gunakan formatJob agar Flutter tidak error saat parsing)
+        return response()->json([
+            'success' => true,
+            'message' => "Langkah $nextStep berhasil diperbarui",
+            // PENTING: Gunakan helper formatJob yang kamu punya di Controller
+            'job' => $this->formatJob($job->load(['trackers', 'cs', 'technician', 'comments.user'])) 
+        ]);
+    }
+
     public function getTechnicians(Request $request)
     {
         $user = $request->user();
