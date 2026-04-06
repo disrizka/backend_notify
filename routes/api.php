@@ -57,5 +57,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/jobs/{id}/accept', [JobApiController::class, 'acceptJob']);
     Route::post('/jobs/{id}/progress', [JobApiController::class, 'updateProgress']);
     Route::post('/jobs/{id}/comments', [JobApiController::class, 'addComment']);
+    Route::get('/jobs/{id}', [JobApiController::class, 'show']);
+    Route::post('/jobs/{job}/comments', [JobApiController::class, 'addComment']); 
+    Route::get('/jobs/{job}', [JobApiController::class, 'show']);
 });
 });

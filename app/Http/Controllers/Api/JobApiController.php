@@ -29,6 +29,15 @@ class JobApiController extends Controller
         'data'    => $this->formatJobs($jobs)
     ]);
 }
+// Di JobApiController.php
+public function show($id)
+{
+    $job = Job::with(['cs', 'technician', 'trackers', 'comments.user'])->findOrFail($id);
+    return response()->json([
+        'success' => true,
+        'job' => $this->formatJob($job)
+    ]);
+}
 
     /**
      * Semua karyawan bisa melihat SEMUA riwayat tugas selesai
@@ -66,61 +75,68 @@ class JobApiController extends Controller
     }
 
         public function updateProgress(Request $request, $id)
-    {
-        $job = Job::findOrFail($id);
-        $user = auth()->user(); 
+{
+    $job = Job::findOrFail($id);
+    $user = auth()->user(); 
 
-        // 1. Validasi: Hanya teknisi yang ditunjuk yang bisa kerja
-        if ($job->technician_id !== $user->id) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Maaf, hanya teknisi yang ditugaskan yang dapat memperbarui tugas ini.'
-            ], 403);
-        }
-
-        // 2. Hitung langkah berikutnya
-        $lastStep = \App\Models\JobTracker::where('job_id', $job->id)->max('step_number') ?? 0;
-        $nextStep = $lastStep + 1;
-
-        if ($lastStep >= 4) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Tugas ini sudah selesai dikerjakan.'
-            ], 400);
-        }
-
-        // 3. Olah Foto
-        $photoPath = null;
-        if ($request->hasFile('photo')) {
-            $file = $request->file('photo');
-            $fileName = time() . '_step' . $nextStep . '.' . $file->getClientOriginalExtension();
-            $file->move(public_path('job_photos'), $fileName);
-            $photoPath = 'job_photos/' . $fileName;
-        }
-
-        // 4. Simpan ke Tracker
-        \App\Models\JobTracker::create([
-            'job_id' => $job->id,
-            'step_number' => $nextStep,
-            'description_value' => $request->description_value,
-            'photo_path' => $photoPath,
-        ]);
-
-        // 5. Update status Job
-        $job->update([
-            'current_step' => $nextStep,
-            'status' => ($nextStep >= 4) ? 'completed' : 'process'
-        ]);
-
-        // 6. Response (Gunakan formatJob agar Flutter tidak error saat parsing)
+    // 1. Validasi Akses
+    if ($job->technician_id !== $user->id) {
         return response()->json([
-            'success' => true,
-            'message' => "Langkah $nextStep berhasil diperbarui",
-            // PENTING: Gunakan helper formatJob yang kamu punya di Controller
-            'job' => $this->formatJob($job->load(['trackers', 'cs', 'technician', 'comments.user'])) 
-        ]);
+            'success' => false,
+            'message' => 'Maaf, hanya teknisi yang ditugaskan yang dapat memperbarui tugas ini.'
+        ], 403);
     }
 
+    // 2. Hitung langkah berikutnya
+    $lastStep = \App\Models\JobTracker::where('job_id', $job->id)->max('step_number') ?? 0;
+    $nextStep = $lastStep + 1;
+
+    if ($lastStep >= 4) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Tugas ini sudah selesai dikerjakan.'
+        ], 400);
+    }
+
+    // 3. Olah Foto (Sama seperti sebelumnya)
+    $photoPath = null;
+    if ($request->hasFile('photo')) {
+        $file = $request->file('photo');
+        $fileName = time() . '_photo_step' . $nextStep . '.' . $file->getClientOriginalExtension();
+        $file->move(public_path('job_photos'), $fileName);
+        $photoPath = 'job_photos/' . $fileName;
+    }
+
+    // 4. FIX: Olah Video (Ini yang tadi gda kodingannya)
+    $videoPath = null;
+    if ($request->hasFile('video')) {
+        $vFile = $request->file('video');
+        $vName = time() . '_video_step' . $nextStep . '.' . $vFile->getClientOriginalExtension();
+        $vFile->move(public_path('job_videos'), $vName); // Simpan ke folder job_videos
+        $videoPath = 'job_videos/' . $vName;
+    }
+
+    // 5. Simpan ke Tracker (Pastikan kolom database namanya video_path)
+    \App\Models\JobTracker::create([
+        'job_id' => $job->id,
+        'step_number' => $nextStep,
+        'description_value' => $request->description_value,
+        'photo_path' => $photoPath,
+        'video_path' => $videoPath, // Simpan path video ke database
+    ]);
+
+    // 6. Update status Job
+    $job->update([
+        'current_step' => $nextStep,
+        'status' => ($nextStep >= 4) ? 'completed' : 'process'
+    ]);
+
+    return response()->json([
+        'success' => true,
+        'message' => "Langkah $nextStep berhasil diperbarui",
+        'job' => $this->formatJob($job->load(['trackers', 'cs', 'technician', 'comments.user'])) 
+    ]);
+}
     public function getTechnicians(Request $request)
     {
         $user = $request->user();
