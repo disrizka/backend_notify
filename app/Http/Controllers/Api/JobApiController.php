@@ -9,53 +9,56 @@ use App\Models\JobComment;
 use App\Models\User;
 use App\Models\Division;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class JobApiController extends Controller
 {
     /**
-     * Semua karyawan bisa melihat SEMUA tugas aktif
-     * Response: JSON Array langsung (bukan dibungkus object)
+     * Mengambil semua tugas yang belum selesai (Pending & Process)
      */
-    public function getActiveJobs(Request $request)
-{
-    $jobs = Job::with(['cs', 'technician', 'trackers', 'comments.user'])
-        ->where('status', '!=', 'completed')
-        ->latest()
-        ->get();
+    public function getActiveJobs()
+    {
+        $jobs = Job::with(['cs', 'technician', 'trackers', 'comments.user'])
+            ->where('status', '!=', 'completed')
+            ->latest()
+            ->get();
 
-    // SINKRONKAN: Bungkus dalam key 'data' agar sama dengan getJobHistory
-    return response()->json([
-        'success' => true,
-        'data'    => $this->formatJobs($jobs)
-    ]);
-}
-// Di JobApiController.php
-public function show($id)
-{
-    $job = Job::with(['cs', 'technician', 'trackers', 'comments.user'])->findOrFail($id);
-    return response()->json([
-        'success' => true,
-        'job' => $this->formatJob($job)
-    ]);
-}
+        return response()->json([
+            'success' => true,
+            'data'    => $this->formatJobs($jobs)
+        ]);
+    }
 
     /**
-     * Semua karyawan bisa melihat SEMUA riwayat tugas selesai
-     * Response: JSON Array langsung
+     * Detail satu tugas (Untuk Refresh di Flutter)
      */
-    public function getJobHistory(Request $request)
+    public function show($id)
+    {
+        $job = Job::with(['cs', 'technician', 'trackers', 'comments.user'])->findOrFail($id);
+        return response()->json([
+            'success' => true,
+            'job' => $this->formatJob($job)
+        ]);
+    }
+
+    /**
+     * Mengambil semua tugas yang sudah selesai
+     */
+    public function getJobHistory()
     {
         $jobs = Job::with(['cs', 'technician', 'trackers', 'comments.user'])
             ->where('status', 'completed')
             ->latest()
             ->get();
 
-        // PENTING: Return langsung array, BUKAN { "success": true, "data": [...] }
-        return response()->json($this->formatJobs($jobs));
+        return response()->json([
+            'success' => true,
+            'data'    => $this->formatJobs($jobs)
+        ]);
     }
 
     /**
-     * Terima tugas (hanya technician yang ditugaskan)
+     * Teknisi mengambil tugas pending
      */
     public function acceptJob(Request $request, $jobId)
     {
@@ -74,121 +77,86 @@ public function show($id)
         ]);
     }
 
-        public function updateProgress(Request $request, $id)
-{
-    $job = Job::findOrFail($id);
-    $user = auth()->user(); 
-
-    // 1. Validasi Akses
-    if ($job->technician_id !== $user->id) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Maaf, hanya teknisi yang ditugaskan yang dapat memperbarui tugas ini.'
-        ], 403);
-    }
-
-    // 2. Hitung langkah berikutnya
-    $lastStep = \App\Models\JobTracker::where('job_id', $job->id)->max('step_number') ?? 0;
-    $nextStep = $lastStep + 1;
-
-    if ($lastStep >= 4) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Tugas ini sudah selesai dikerjakan.'
-        ], 400);
-    }
-
-    // 3. Olah Foto (Sama seperti sebelumnya)
-    $photoPath = null;
-    if ($request->hasFile('photo')) {
-        $file = $request->file('photo');
-        $fileName = time() . '_photo_step' . $nextStep . '.' . $file->getClientOriginalExtension();
-        $file->move(public_path('job_photos'), $fileName);
-        $photoPath = 'job_photos/' . $fileName;
-    }
-
-    // 4. FIX: Olah Video (Ini yang tadi gda kodingannya)
-    $videoPath = null;
-    if ($request->hasFile('video')) {
-        $vFile = $request->file('video');
-        $vName = time() . '_video_step' . $nextStep . '.' . $vFile->getClientOriginalExtension();
-        $vFile->move(public_path('job_videos'), $vName); // Simpan ke folder job_videos
-        $videoPath = 'job_videos/' . $vName;
-    }
-
-    // 5. Simpan ke Tracker (Pastikan kolom database namanya video_path)
-    \App\Models\JobTracker::create([
-        'job_id' => $job->id,
-        'step_number' => $nextStep,
-        'description_value' => $request->description_value,
-        'photo_path' => $photoPath,
-        'video_path' => $videoPath, // Simpan path video ke database
-    ]);
-
-    // 6. Update status Job
-    $job->update([
-        'current_step' => $nextStep,
-        'status' => ($nextStep >= 4) ? 'completed' : 'process'
-    ]);
-
-    return response()->json([
-        'success' => true,
-        'message' => "Langkah $nextStep berhasil diperbarui",
-        'job' => $this->formatJob($job->load(['trackers', 'cs', 'technician', 'comments.user'])) 
-    ]);
-}
-    public function getTechnicians(Request $request)
+    /**
+     * Teknisi upload progress (Foto & Video)
+     */
+    public function updateProgress(Request $request, $id)
     {
-        $user = $request->user();
+        $job = Job::findOrFail($id);
+        $user = auth()->user(); 
 
-        if ($user->role !== 'kepala') {
-            $csDiv = Division::where('name', 'Customer Service')->first();
-            if (!$csDiv || $user->division_id !== $csDiv->id) {
-                return response()->json(['error' => 'Tidak diizinkan'], 403);
-            }
+        if ($job->technician_id !== $user->id) {
+            return response()->json(['success' => false, 'message' => 'Hanya teknisi pelaksana yang bisa update'], 403);
         }
 
+        $nextStep = ($job->current_step ?? 0) + 1;
+
+        if ($nextStep > 4) {
+            return response()->json(['success' => false, 'message' => 'Tugas sudah selesai'], 400);
+        }
+
+        $photoPath = null;
+        if ($request->hasFile('photo')) {
+            $fileName = time() . '_step' . $nextStep . '.' . $request->file('photo')->getClientOriginalExtension();
+            $request->file('photo')->move(public_path('job_photos'), $fileName);
+            $photoPath = 'job_photos/' . $fileName;
+        }
+
+        $videoPath = null;
+        if ($request->hasFile('video')) {
+            $vName = time() . '_video_step' . $nextStep . '.' . $request->file('video')->getClientOriginalExtension();
+            $request->file('video')->move(public_path('job_videos'), $vName);
+            $videoPath = 'job_videos/' . $vName;
+        }
+
+        JobTracker::create([
+            'job_id' => $job->id,
+            'step_number' => $nextStep,
+            'description_value' => $request->description_value,
+            'photo_path' => $photoPath,
+            'video_path' => $videoPath,
+        ]);
+
+        $job->update([
+            'current_step' => $nextStep,
+            'status' => ($nextStep >= 4) ? 'completed' : 'process'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Langkah $nextStep berhasil diperbarui",
+            'job' => $this->formatJob($job->load(['trackers', 'cs', 'technician', 'comments.user'])) 
+        ]);
+    }
+
+    /**
+     * Dropdown list teknisi untuk CS
+     */
+    public function getTechnicians()
+    {
         $technicians = User::where('role', 'karyawan')
             ->whereHas('division', function ($q) {
                 $q->where('name', '!=', 'Customer Service');
             })
-            ->with('division')
-            ->get()
-            ->map(fn($t) => [
-                'id'       => $t->id,
-                'name'     => $t->name,
-                'email'    => $t->email,
-                'division' => $t->division ? $t->division->name : '-',
-            ]);
+            ->get(['id', 'name']);
 
-        // Return langsung array
         return response()->json($technicians);
     }
 
     /**
-     * CS: Buat tugas baru
+     * CS/Pimpinan membuat tugas baru
      */
     public function createJob(Request $request)
     {
         $request->validate([
-            'title'         => 'required|string|max:255',
-            'description'   => 'nullable|string',
+            'title' => 'required',
             'technician_id' => 'required|exists:users,id',
         ]);
-
-        $user = $request->user();
-
-        if ($user->role !== 'kepala') {
-            $csDiv = Division::where('name', 'Customer Service')->first();
-            if (!$csDiv || $user->division_id !== $csDiv->id) {
-                return response()->json(['error' => 'Hanya CS yang bisa membuat tugas'], 403);
-            }
-        }
 
         $job = Job::create([
             'title'         => $request->title,
             'description'   => $request->description,
-            'cs_id'         => $user->id,
+            'cs_id'         => auth()->id(),
             'technician_id' => $request->technician_id,
             'status'        => 'pending',
         ]);
@@ -201,20 +169,15 @@ public function show($id)
     }
 
     /**
-     * Tambah komentar — SEMUA karyawan yang login boleh berkomentar
+     * Menambah komentar diskusi
      */
     public function addComment(Request $request, $jobId)
     {
-        $request->validate([
-            'comment' => 'required|string|max:1000',
-        ]);
-
-        $user = $request->user();
-        $job  = Job::findOrFail($jobId);
+        $request->validate(['comment' => 'required|string|max:1000']);
 
         $comment = JobComment::create([
-            'job_id'  => $job->id,
-            'user_id' => $user->id,
+            'job_id'  => $jobId,
+            'user_id' => auth()->id(),
             'comment' => $request->comment,
         ]);
 
@@ -223,14 +186,14 @@ public function show($id)
             'comment' => [
                 'id'         => $comment->id,
                 'comment'    => $comment->comment,
-                'user_name'  => $user->name,
-                'user_id'    => $user->id,
+                'user_name'  => auth()->user()->name,
+                'user_id'    => auth()->id(),
                 'created_at' => $comment->created_at->format('d M Y H:i'),
             ],
         ], 201);
     }
 
-    // ── Helper ────────────────────────────────────────────────────────────────
+    // --- Helper Formatting ---
 
     private function formatJobs($jobs): array
     {
@@ -239,16 +202,14 @@ public function show($id)
 
     private function formatJob(Job $job): array
     {
-        $trackers = ($job->trackers ?? collect())->map(function ($t) {
-            return [
-                'id'                => $t->id,
-                'step_number'       => $t->step_number,
-                'description_value' => $t->description_value,
-                'photo_url'         => $t->photo_path ? asset($t->photo_path) : null,
-                'video_url'         => $t->video_path ? asset($t->video_path) : null,
-                'created_at'        => $t->created_at?->format('d M Y H:i'),
-            ];
-        })->values()->toArray();
+        $trackers = ($job->trackers ?? collect())->map(fn($t) => [
+            'id'                => $t->id,
+            'step_number'       => $t->step_number,
+            'description_value' => $t->description_value,
+            'photo_url'         => $t->photo_path ? asset($t->photo_path) : null,
+            'video_url'         => $t->video_path ? asset($t->video_path) : null,
+            'created_at'        => $t->created_at?->format('d M Y H:i'),
+        ])->values()->toArray();
 
         $comments = ($job->comments ?? collect())->map(fn($c) => [
             'id'         => $c->id,
@@ -265,12 +226,8 @@ public function show($id)
             'status'       => $job->status,
             'current_step' => $job->current_step,
             'feedback'     => $job->feedback,
-            'cs'           => $job->cs
-                ? ['id' => $job->cs->id, 'name' => $job->cs->name]
-                : null,
-            'technician'   => $job->technician
-                ? ['id' => $job->technician->id, 'name' => $job->technician->name]
-                : null,
+            'cs'           => $job->cs ? ['id' => $job->cs->id, 'name' => $job->cs->name] : null,
+            'technician'   => $job->technician ? ['id' => $job->technician->id, 'name' => $job->technician->name] : null,
             'trackers'     => $trackers,
             'comments'     => $comments,
             'is_completed' => $job->status === 'completed',

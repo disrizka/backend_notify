@@ -12,16 +12,13 @@ class AuthApiController extends Controller
 {
     public function login(Request $request)
     {
-        // Validasi input email & password
         $request->validate([
             'email' => 'required|email',
             'password' => 'required',
         ]);
 
-        // Cari user berdasarkan email (Sama dengan database Web)
         $user = User::where('email', $request->email)->first();
 
-        // Cek apakah user ada dan password (BCRYPT) cocok
         if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
                 'status' => 'error',
@@ -29,10 +26,8 @@ class AuthApiController extends Controller
             ], 401);
         }
 
-        // Hapus token lama agar tidak menumpuk di database
         $user->tokens()->delete();
 
-        // Buat token baru menggunakan Laravel Sanctum
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
@@ -44,6 +39,10 @@ class AuthApiController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role, 
+                'division' => $user->division ? [
+        'id' => $user->division->id,
+        'name' => $user->division->name,
+    ] : null,
             ]
         ]);
     }

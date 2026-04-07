@@ -60,5 +60,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/jobs/{id}', [JobApiController::class, 'show']);
     Route::post('/jobs/{job}/comments', [JobApiController::class, 'addComment']); 
     Route::get('/jobs/{job}', [JobApiController::class, 'show']);
+
+    Route::get('/jobs/technicians', [JobApiController::class, 'getTechnicians']);
+    Route::post('/jobs', [JobApiController::class, 'store']);
 });
 });
