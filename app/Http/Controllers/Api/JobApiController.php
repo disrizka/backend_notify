@@ -125,23 +125,41 @@ class JobApiController extends Controller
         return response()->json([
             'success' => true,
             'message' => "Langkah $nextStep berhasil diperbarui",
-            'job' => $this->formatJob($job->load(['trackers', 'cs', 'technician', 'comments.user'])) 
+            'completed' => $nextStep >= 4, // Flutter butuh ini
+            'job' => $job->load(['trackers', 'cs', 'technician', 'comments.user'])
         ]);
     }
 
     /**
      * Dropdown list teknisi untuk CS
      */
-    public function getTechnicians()
-    {
-        $technicians = User::where('role', 'karyawan')
-            ->whereHas('division', function ($q) {
-                $q->where('name', '!=', 'Customer Service');
-            })
-            ->get(['id', 'name']);
+    public function getTechnicians(Request $request)
+{
+    $user = $request->user();
 
-        return response()->json($technicians);
+        // LAMA - hapus/ganti bagian ini
+    if ($user->role !== 'kepala') {
+        $csDiv = Division::where('name', 'Customer Service')->first();
+        if (!$csDiv || $user->division_id !== $csDiv->id) {
+            return response()->json(['error' => 'Tidak diizinkan'], 403);
+        }
     }
+
+    $technicians = User::where('role', 'karyawan')
+        ->whereHas('division', function ($q) {
+            $q->where('name', '!=', 'Customer Service');
+        })
+        ->with('division')
+        ->get()
+        ->map(fn($t) => [
+            'id'       => $t->id,
+            'name'     => $t->name,
+            'email'    => $t->email,
+            'division' => $t->division ? $t->division->name : '-',
+        ]);
+
+    return response()->json($technicians);
+}
 
     /**
      * CS/Pimpinan membuat tugas baru
@@ -168,16 +186,22 @@ class JobApiController extends Controller
         ], 201);
     }
 
-    /**
-     * Menambah komentar diskusi
-     */
-    public function addComment(Request $request, $jobId)
+   public function addComment(Request $request, $jobId)
     {
         $request->validate(['comment' => 'required|string|max:1000']);
-
+        
+        $user = $request->user(); // pastikan user ada
+        
+        if (!$user) {
+            return response()->json(['error' => 'Unauthenticated'], 401);
+        }
+        
+        $job = Job::findOrFail($jobId);
+        // HAPUS validasi akses - semua boleh komentar
+        
         $comment = JobComment::create([
-            'job_id'  => $jobId,
-            'user_id' => auth()->id(),
+            'job_id'  => $job->id,
+            'user_id' => $user->id,
             'comment' => $request->comment,
         ]);
 
@@ -186,8 +210,8 @@ class JobApiController extends Controller
             'comment' => [
                 'id'         => $comment->id,
                 'comment'    => $comment->comment,
-                'user_name'  => auth()->user()->name,
-                'user_id'    => auth()->id(),
+                'user_name'  => $user->name,
+                'user_id'    => $user->id,
                 'created_at' => $comment->created_at->format('d M Y H:i'),
             ],
         ], 201);
