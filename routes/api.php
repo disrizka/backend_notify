@@ -10,16 +10,17 @@ use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\JobApiController;
 use App\Http\Controllers\UserController;
 
-// Rute Publik
+// ── Rute Publik ──────────────────────────────────────────────────────────────
 Route::post('/login', [AuthApiController::class, 'login']);
 
-// Rute Terproteksi
+// ── Rute Terproteksi ─────────────────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
     // Auth & User
     Route::post('/logout', [AuthApiController::class, 'logout']);
-    Route::get('/user', fn(Request $r) => $r->user());
+    Route::get('/user', fn(Request $r) => $r->user()->load('division'));
     Route::get('/users', [UserController::class, 'index']);
+    Route::put('/user/change-password', [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
 
     // Presensi
     Route::post('/presence/check-in',    [PresenceController::class, 'storeCheckIn']);
@@ -42,21 +43,17 @@ Route::middleware('auth:sanctum')->group(function () {
             'notifications' => $request->user()->notifications()->take(10)->get()
         ]);
     });
-    Route::get('/notifications/list',     [NotificationController::class, 'index']);
+    Route::get('/notifications/list',       [NotificationController::class, 'index']);
     Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
-    Route::get('/notifications/count',    [NotificationController::class, 'getUnreadCount']);
+    Route::get('/notifications/count',      [NotificationController::class, 'getUnreadCount']);
 
-    Route::put('/user/change-password', [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
-
-    // Technician: lihat & update tugas
-    Route::middleware('auth:sanctum')->group(function () {
-     Route::get('/jobs/active', [JobApiController::class, 'getActiveJobs']);
-    Route::get('/jobs/history', [JobApiController::class, 'getJobHistory']);
-    Route::get('/jobs/technicians', [JobApiController::class, 'getTechnicians']);
-    Route::post('/jobs', [JobApiController::class, 'createJob']);
-    Route::get('/jobs/{id}', [JobApiController::class, 'getJobDetail']); 
+    // ── Job System ───────────────────────────────────────────────────────────
+    Route::get('/jobs/active',       [JobApiController::class, 'getActiveJobs']);
+    Route::get('/jobs/history',      [JobApiController::class, 'getJobHistory']);
+    Route::get('/jobs/technicians',  [JobApiController::class, 'getTechnicians']);
+    Route::post('/jobs',             [JobApiController::class, 'createJob']);
+    Route::get('/jobs/{id}',         [JobApiController::class, 'show']);
     Route::post('/jobs/{id}/accept', [JobApiController::class, 'acceptJob']);
     Route::post('/jobs/{id}/progress', [JobApiController::class, 'updateProgress']);
     Route::post('/jobs/{id}/comments', [JobApiController::class, 'addComment']);
-});
 });
