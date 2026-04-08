@@ -74,68 +74,75 @@ class PresenceApprovalController extends Controller
  * 3. Sub-menu: Jadwal Kerja
  */
 public function schedule()
-{
-    // 1. Ambil data libur manual dari database
-    $manualHolidays = \DB::table('holidays')->get()->map(function($h) {
-        return [
-            'title' => $h->name ?? 'Libur Kantor',
-            'start' => $h->holiday_date,
-            'color' => '#E53935', // Merah
-        ];
-    })->toArray();
-
-    // 2. Otomatisasi Hari Jumat Libur untuk tahun 2026
-    $autoHolidays = [];
-    $start = now()->startOfYear();
-    $end = now()->endOfYear();
-
-    for ($date = $start; $date->lte($end); $date->addDay()) {
-        if ($date->isFriday()) {
-            $autoHolidays[] = [
-                'title' => 'Libur Mingguan',
-                'start' => $date->format('Y-m-d'),
-                'color' => '#E53935',
-            ];
+    {
+        $manualHolidays = \DB::table('holidays')->get()->keyBy('holiday_date');
+ 
+        $events    = [];
+        $yearStart = now()->startOfYear();
+        $yearEnd   = now()->endOfYear();
+ 
+        for ($date = $yearStart->copy(); $date->lte($yearEnd); $date->addDay()) {
+            $dateStr = $date->format('Y-m-d');
+ 
+            // Jumat → otomatis libur
+            if ($date->isFriday()) {
+                $title = isset($manualHolidays[$dateStr])
+                    ? ($manualHolidays[$dateStr]->name ?? 'Libur Mingguan (Jumat)')
+                    : 'Libur Mingguan (Jumat)';
+ 
+                $events[$dateStr] = [
+                    'title' => $title,
+                    'start' => $dateStr,
+                    'color' => '#E53935',
+                ];
+                continue;
+            }
+ 
+            // Hari lain yang ada di tabel manual
+            if (isset($manualHolidays[$dateStr])) {
+                $events[$dateStr] = [
+                    'title' => $manualHolidays[$dateStr]->name ?? 'Libur Kantor',
+                    'start' => $dateStr,
+                    'color' => '#E53935',
+                ];
+            }
         }
+ 
+        $holidays = array_values($events);
+        return view('admin.presence.schedule', compact('holidays'));
     }
-
-    // Gabungkan data database dan otomatis jumat
-    $holidays = array_merge($manualHolidays, $autoHolidays);
-
-    return view('admin.presence.schedule', compact('holidays'));
-}
-
-/**
- * Fungsi Simpan/Hapus Libur ke Database
- */
-public function toggleHoliday(Request $request)
-{
-    $request->validate(['date' => 'required|date']);
-    $date = $request->date;
-
-    // Cari apakah sudah ada di tabel holidays
-    $exists = \DB::table('holidays')->where('holiday_date', $date)->first();
-
-    if ($exists) {
-        // Jika ada, hapus (jadikan hari kerja kembali)
-        \DB::table('holidays')->where('holiday_date', $date)->delete();
-        $message = 'Tanggal ' . $date . ' diubah menjadi HARI KERJA';
-    } else {
-        // Jika tidak ada, masukkan ke database (jadikan libur)
-        \DB::table('holidays')->insert([
-            'holiday_date' => $date,
-            'name'         => 'Libur Kantor',
-            'created_at'   => now(),
-            'updated_at'   => now(),
-        ]);
-        $message = 'Tanggal ' . $date . ' berhasil diset sebagai HARI LIBUR';
+ 
+    public function toggleHoliday(Request $request)
+    {
+        $request->validate(['date' => 'required|date']);
+        $date   = $request->date;
+        $carbon = \Carbon\Carbon::parse($date);
+ 
+        // Blokir toggle Jumat
+        if ($carbon->isFriday()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Hari Jumat otomatis libur dan tidak dapat diubah.',
+            ]);
+        }
+ 
+        $exists = \DB::table('holidays')->where('holiday_date', $date)->first();
+ 
+        if ($exists) {
+            \DB::table('holidays')->where('holiday_date', $date)->delete();
+            $message = "Tanggal {$date} kembali menjadi HARI KERJA.";
+        } else {
+            \DB::table('holidays')->insert([
+                'holiday_date' => $date,
+                'name'         => 'Libur Kantor',
+                'created_at'   => now(),
+                'updated_at'   => now(),
+            ]);
+            $message = "Tanggal {$date} berhasil diset sebagai HARI LIBUR.";
+        }
+ 
+        return response()->json(['success' => true, 'message' => $message]);
     }
-
-    return response()->json([
-        'success' => true,
-        'message' => $message
-    ]);
-}
 
     /**
      * 4. Riwayat Presensi

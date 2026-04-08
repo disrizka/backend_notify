@@ -9,17 +9,19 @@ use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
+
     public function index(Request $request)
     {
-        // Ambil data karyawan
-        $users = User::with('division')->where('role', 'karyawan')->get();
+        $users = User::with('division')
+            ->where('role', 'karyawan')
+            ->orderBy('name', 'asc')
+            ->get();
 
-        // CEK: Jika permintaan datang dari API (Flutter), kirim JSON
         if ($request->expectsJson()) {
             return response()->json($users);
         }
 
-        // Jika dari Web, kirim tampilan Blade biasa
+        // Jika akses dari Web Dashboard
         $divisions = Division::all();
         return view('kepala.user.index', compact('users', 'divisions'));
     }
@@ -35,18 +37,28 @@ class UserController extends Controller
         User::create([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make('jonusa123'), // Password default
+            'password' => Hash::make('jonusa123'), 
             'division_id' => $request->division_id,
             'role' => 'karyawan',
             'is_default_password' => true,
         ]);
 
-        return redirect()->back()->with('success', 'Karyawan berhasil didaftarkan dengan password default: jonusa123');
+        return redirect()->back()->with('success', 'Karyawan berhasil didaftarkan! Password default: jonusa123');
     }
-        public function destroy($id)
+
+  
+    public function destroy($id)
     {
-        $user = \App\Models\User::findOrFail($id);
-        $user->delete();
-        return redirect()->back()->with('success', 'Karyawan berhasil dihapus!');
+        try {
+            $user = User::findOrFail($id);
+            if ($user->id === auth()->id()) {
+                return redirect()->back()->with('error', 'Anda tidak bisa menghapus akun sendiri!');
+            }
+
+            $user->delete();
+            return redirect()->back()->with('success', 'Data karyawan berhasil dihapus dari sistem.');
+        } catch (\Exception $e) {
+            return redirect()->back()->with('error', 'Gagal menghapus data: ' . $e->getMessage());
+        }
     }
 }

@@ -1,4 +1,12 @@
 <?php
+// ============================================================
+// FILE: routes/api.php  (FULL REPLACEMENT)
+// ============================================================
+// Tambahan dibanding versi lama:
+//   - GET /api/holidays  → HolidayController@index (tanpa auth,
+//     agar kalender Flutter bisa load tanpa login ulang)
+//     Jika ingin dilindungi auth, pindahkan ke dalam group sanctum.
+// ============================================================
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -8,12 +16,13 @@ use App\Http\Controllers\Admin\OfficeSettingController;
 use App\Http\Controllers\Api\ChatController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\JobApiController;
+use App\Http\Controllers\Api\HolidayController as ApiHolidayController;
 use App\Http\Controllers\UserController;
 
 // ── Rute Publik ──────────────────────────────────────────────────────────────
 Route::post('/login', [AuthApiController::class, 'login']);
 
-// ── Rute Terproteksi ─────────────────────────────────────────────────────────
+// ── Rute Terproteksi (Sanctum) ───────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
     // Auth & User
@@ -21,6 +30,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', fn(Request $r) => $r->user()->load('division'));
     Route::get('/users', [UserController::class, 'index']);
     Route::put('/user/change-password', [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
+
+    // ── Holidays (Jadwal Libur) ───────────────────────────────────────────
+    // Dipakai Flutter JadwalKerjaScreen: GET /api/holidays
+    // Mengembalikan Jumat + Sabtu + Minggu + libur manual dari DB
+    Route::get('/holidays', [ApiHolidayController::class, 'index']);
 
     // Presensi
     Route::post('/presence/check-in',    [PresenceController::class, 'storeCheckIn']);
@@ -40,30 +54,20 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/notifications', function (Request $request) {
         return response()->json([
             'unread_count'  => $request->user()->unreadNotifications->count(),
-            'notifications' => $request->user()->notifications()->take(10)->get()
+            'notifications' => $request->user()->notifications()->take(10)->get(),
         ]);
     });
     Route::get('/notifications/list',       [NotificationController::class, 'index']);
     Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
     Route::get('/notifications/count',      [NotificationController::class, 'getUnreadCount']);
 
-    // ── Job System ───────────────────────────────────────────────────────────
-    Route::get('/jobs/active',       [JobApiController::class, 'getActiveJobs']);
-    Route::get('/jobs/history',      [JobApiController::class, 'getJobHistory']);
-    Route::get('/jobs/technicians',  [JobApiController::class, 'getTechnicians']);
-    Route::post('/jobs',             [JobApiController::class, 'createJob']);
-    Route::get('/jobs/{id}',         [JobApiController::class, 'show']);
-    Route::post('/jobs/{id}/accept', [JobApiController::class, 'acceptJob']);
-    Route::post('/jobs/{id}/progress', [JobApiController::class, 'updateProgress']);
-    Route::post('/jobs/{id}/comments', [JobApiController::class, 'addComment']);
-
-     // ── Video ───────────────────────────────────────────────────────────
-    Route::get('/video/{filename}', function ($filename) {
-    $path = public_path('uploads/' . $filename);
-    
-    if (!file_exists($path)) {
-        return response()->json(['error' => 'File not found.'], 404);
-    }
-    return new BinaryFileResponse($path);
-});
+    // ── Job System ───────────────────────────────────────────────────────
+    Route::get('/jobs/active',           [JobApiController::class, 'getActiveJobs']);
+    Route::get('/jobs/history',          [JobApiController::class, 'getJobHistory']);
+    Route::get('/jobs/technicians',      [JobApiController::class, 'getTechnicians']);
+    Route::post('/jobs',                 [JobApiController::class, 'createJob']);
+    Route::get('/jobs/{id}',             [JobApiController::class, 'show']);
+    Route::post('/jobs/{id}/accept',     [JobApiController::class, 'acceptJob']);
+    Route::post('/jobs/{id}/progress',   [JobApiController::class, 'updateProgress']);
+    Route::post('/jobs/{id}/comments',   [JobApiController::class, 'addComment']);
 });
