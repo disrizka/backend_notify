@@ -56,4 +56,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/jobs/{id}/accept', [JobApiController::class, 'acceptJob']);
     Route::post('/jobs/{id}/progress', [JobApiController::class, 'updateProgress']);
     Route::post('/jobs/{id}/comments', [JobApiController::class, 'addComment']);
+
+     // ── Video ───────────────────────────────────────────────────────────
+    Route::get('/video/{filename}', function ($filename) {
+    $path = public_path('uploads/' . $filename);
+    
+    if (!file_exists($path)) {
+        return response()->json(['error' => 'File not found.'], 404);
+    }
+    return new BinaryFileResponse($path);
+});
 });

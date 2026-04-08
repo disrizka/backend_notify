@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Models\Division;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Notifications\InternalNotification;
 
 class JobApiController extends Controller
 {
@@ -129,23 +130,22 @@ class JobApiController extends Controller
         ]);
     }
 
-    /**
-     * Dropdown list teknisi untuk CS & Kepala
-     * FIX: Sekarang include division name & filter berdasarkan role pemanggil
-     */
-    public function getTechnicians(Request $request)
+   public function getTechnicians(Request $request)
     {
         $user = $request->user();
 
+        // Mulai query: Ambil semua user dengan role 'karyawan'
         $query = User::with('division')->where('role', 'karyawan');
 
-        // Jika role CS, exclude divisi Customer Service sendiri
+        // LOGIKA FILTER:
+        // Jika yang login adalah CS, maka dia TIDAK BOLEH melihat/memilih sesama orang CS
         if ($user->role === 'cs' || ($user->division && $user->division->name === 'Customer Service')) {
             $query->whereHas('division', function ($q) {
                 $q->where('name', '!=', 'Customer Service');
             });
         }
-        // Kepala bisa assign ke semua karyawan
+        
+        // Jika yang login adalah Kepala, filter di atas dilewati (Kepala bisa lihat semua)
 
         $technicians = $query->get()->map(function ($u) {
             return [
@@ -165,40 +165,36 @@ class JobApiController extends Controller
      * CS/Pimpinan membuat tugas baru
      * FIX: Validasi role agar hanya CS & Kepala yang bisa create
      */
-    public function createJob(Request $request)
-    {
-        $user = $request->user();
+   public function createJob(Request $request)
+{
+    $request->validate([
+        'title' => 'required|string|max:255',
+        'technician_id' => 'required|exists:users,id',
+    ]);
 
-        // Validasi role — hanya kepala atau CS yang boleh membuat tugas
-        $isKepala = $user->role === 'kepala';
-        $isCs     = $user->division && $user->division->name === 'Customer Service';
+    $job = Job::create([
+        'title'         => $request->title,
+        'description'   => $request->description,
+        'cs_id'         => auth()->id(),
+        'technician_id' => $request->technician_id,
+        'status'        => 'pending',
+    ]);
 
-        if (!$isKepala && !$isCs) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Anda tidak memiliki izin untuk membuat tugas.'
-            ], 403);
-        }
-
-        $request->validate([
-            'title'        => 'required|string|max:255',
-            'technician_id' => 'required|exists:users,id',
-        ]);
-
-        $job = Job::create([
-            'title'         => $request->title,
-            'description'   => $request->description ?? '',
-            'cs_id'         => $user->id,
-            'technician_id' => $request->technician_id,
-            'status'        => 'pending',
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Tugas berhasil dikirim!',
-            'job'     => $this->formatJob($job->load(['cs', 'technician', 'trackers', 'comments.user'])),
-        ], 201);
+    $receiver = User::find($request->technician_id);
+    if ($receiver) {
+        $receiver->notify(new \App\Notifications\InternalNotification([
+            'title'   => 'Tugas Baru!',
+            'message' => 'Anda mendapatkan tugas: ' . $request->title,
+            'type'    => 'job_assigned',
+        ]));
     }
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Tugas berhasil dibuat!',
+        'job'     => $job
+    ], 201);
+}
 
     /**
      * Menambah komentar diskusi
