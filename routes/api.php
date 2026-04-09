@@ -1,11 +1,6 @@
 <?php
 // ============================================================
-// FILE: routes/api.php  (FULL REPLACEMENT)
-// ============================================================
-// Tambahan dibanding versi lama:
-//   - GET /api/holidays  → HolidayController@index (tanpa auth,
-//     agar kalender Flutter bisa load tanpa login ulang)
-//     Jika ingin dilindungi auth, pindahkan ke dalam group sanctum.
+// FILE: routes/api.php
 // ============================================================
 
 use Illuminate\Http\Request;
@@ -26,14 +21,12 @@ Route::post('/login', [AuthApiController::class, 'login']);
 Route::middleware('auth:sanctum')->group(function () {
 
     // Auth & User
-    Route::post('/logout', [AuthApiController::class, 'logout']);
-    Route::get('/user', fn(Request $r) => $r->user()->load('division'));
-    Route::get('/users', [UserController::class, 'index']);
-    Route::put('/user/change-password', [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
+    Route::post('/logout',               [AuthApiController::class, 'logout']);
+    Route::get('/user',                  fn(Request $r) => $r->user()->load('division'));
+    Route::get('/users',                 [UserController::class, 'index']);
+    Route::put('/user/change-password',  [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
 
-    // ── Holidays (Jadwal Libur) ───────────────────────────────────────────
-    // Dipakai Flutter JadwalKerjaScreen: GET /api/holidays
-    // Mengembalikan Jumat + Sabtu + Minggu + libur manual dari DB
+    // Holidays
     Route::get('/holidays', [ApiHolidayController::class, 'index']);
 
     // Presensi
@@ -46,9 +39,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // Konfigurasi Kantor
     Route::get('/attendance/config', [OfficeSettingController::class, 'getConfig']);
 
-    // Chat
-    Route::get('/chats',  [ChatController::class, 'index']);
-    Route::post('/chats', [ChatController::class, 'store']);
+    // ── Chat ─────────────────────────────────────────────────────────────────
+    Route::get('/chats',              [ChatController::class, 'index']);
+    Route::post('/chats',             [ChatController::class, 'store']);
+    Route::put('/chats/{id}',         [ChatController::class, 'update']);   // Edit pesan
+    Route::delete('/chats/{id}',      [ChatController::class, 'destroy']);  // Hapus pesan
+    Route::post('/chats/{id}/pin',    [ChatController::class, 'pin']);      // Pin pesan
+    Route::post('/chats/{id}/unpin',  [ChatController::class, 'unpin']);    // Unpin pesan
+    Route::post('/chats/{id}/seen',   [ChatController::class, 'markSeen']); // Tandai dilihat
+    Route::get('/chats/{id}/seen',    [ChatController::class, 'seenBy']);   // Siapa yang lihat
 
     // Notifikasi
     Route::get('/notifications', function (Request $request) {
@@ -61,7 +60,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
     Route::get('/notifications/count',      [NotificationController::class, 'getUnreadCount']);
 
-    // ── Job System ───────────────────────────────────────────────────────
+    // Job System
     Route::get('/jobs/active',           [JobApiController::class, 'getActiveJobs']);
     Route::get('/jobs/history',          [JobApiController::class, 'getJobHistory']);
     Route::get('/jobs/technicians',      [JobApiController::class, 'getTechnicians']);
