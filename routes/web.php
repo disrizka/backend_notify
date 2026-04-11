@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\PresenceApprovalController;
 use App\Http\Controllers\Admin\OfficeSettingController;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Controllers\Web\ChatWebController;
 
 Route::get('/', function () {
     return redirect()->route('login');
@@ -22,11 +23,18 @@ Route::get('/dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth')->group(function () {
-
-    // ── Profile ──────────────────────────────────────────────────────────────
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    Route::get('/messages', [\App\Http\Controllers\Web\ChatWebController::class, 'index'])->name('admin.messages');
+    Route::post('/messages/send', [\App\Http\Controllers\Api\ChatController::class, 'store'])->name('web.chats.store');
+
+
+    // Rute Aksi Chat Web
+    Route::post('/messages/{id}/pin', [\App\Http\Controllers\Api\ChatController::class, 'pin'])->name('web.chats.pin');
+    Route::post('/messages/{id}/unpin', [\App\Http\Controllers\Api\ChatController::class, 'unpin'])->name('web.chats.unpin');
+    Route::put('/messages/{id}', [\App\Http\Controllers\Api\ChatController::class, 'update'])->name('web.chats.update');
+    Route::delete('/messages/{id}', [\App\Http\Controllers\Api\ChatController::class, 'destroy'])->name('web.chats.destroy');
 
     // ── Kehadiran & Absensi (Kepala only) ──────────────────────────────────
     Route::middleware('role:kepala')->group(function () {

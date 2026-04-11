@@ -183,6 +183,10 @@
                         <i class="fas fa-plus-circle w-5 mr-3"></i> {{ __('FAQ') }}
                     </x-nav-link>
                     </x-nav-link>
+                    <x-nav-link :href="route('admin.messages')" :active="request()->routeIs('admin.messages')" 
+                    class="flex items-center px-3 py-2 text-sm font-medium rounded-md border-none w-full justify-start transition-colors duration-200">
+                    <i class="fas fa-comments w-5 mr-3"></i> {{ __('Chat Group') }}
+</x-nav-link>
                 @endif
 
                 @if(Auth::user()->role === 'karyawan')

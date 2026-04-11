@@ -41,121 +41,101 @@ class ChatController extends Controller
         return response()->json($chats);
     }
 
-    // ── POST /api/chats ───────────────────────────────────────────────────────
-    // Kirim pesan teks atau file (image/video/audio/file).
-    public function store(Request $request)
-    {
-        $request->validate([
-            'type'      => 'required|in:text,image,video,audio,voice,file',
-            'message'   => 'nullable|string|max:5000',
-            'file'      => 'nullable|file|max:51200', // max 50 MB
-            'parent_id' => 'nullable|integer|exists:chats,id',
-        ]);
+ public function store(Request $request)
+{
+    $request->validate([
+        'type'      => 'required|in:text,image,video,audio,voice,file',
+        'message'   => 'nullable|string|max:5000',
+        'file'      => 'nullable|file|max:51200',
+        'parent_id' => 'nullable|integer|exists:chats,id',
+    ]);
 
-        $filePath = null;
-
-        if ($request->hasFile('file') && $request->file('file')->isValid()) {
-            // Simpan langsung ke public/uploads agar akses via /uploads/namafile
-            $file     = $request->file('file');
-            $filename = time() . '_' . preg_replace('/\s+/', '_', $file->getClientOriginalName());
-            $file->move(public_path('uploads'), $filename);
-            $filePath = 'uploads/' . $filename;
-        }
-
-        $chat = Chat::create([
-            'user_id'   => Auth::id(),
-            'message'   => $request->input('message', ''),
-            'type'      => $request->input('type', 'text'),
-            'file_path' => $filePath,
-            'parent_id' => $request->input('parent_id'),
-            'is_pinned' => false,
-            'is_edited' => false,
-        ]);
-
-        $chat->load(['user', 'parent.user']);
-
-        return response()->json([
-            'id'         => $chat->id,
-            'user_id'    => $chat->user_id,
-            'user'       => $chat->user ? ['id' => $chat->user->id, 'name' => $chat->user->name] : null,
-            'message'    => $chat->message,
-            'type'       => $chat->type,
-            'file_path'  => $chat->file_path,
-            'parent_id'  => $chat->parent_id,
-            'parent'     => $chat->parent ? [
-                'id'      => $chat->parent->id,
-                'message' => $chat->parent->message,
-                'user'    => $chat->parent->user ? ['name' => $chat->parent->user->name] : null,
-            ] : null,
-            'is_pinned'  => false,
-            'is_edited'  => false,
-            'created_at' => $chat->created_at->toIso8601String(),
-        ], 201);
+    $filePath = null;
+    if ($request->hasFile('file') && $request->file('file')->isValid()) {
+        $file     = $request->file('file');
+        $filename = time() . '_' . preg_replace('/\s+/', '_', $file->getClientOriginalName());
+        $file->move(public_path('uploads'), $filename);
+        $filePath = 'uploads/' . $filename;
     }
 
-    // ── PUT /api/chats/{id} ───────────────────────────────────────────────────
-    // Edit isi teks pesan. Hanya pemilik pesan yang boleh.
-    public function update(Request $request, $id)
-    {
-        $chat = Chat::findOrFail($id);
+    $chat = Chat::create([
+        'user_id'   => Auth::id(),
+        'message'   => $request->input('message', ''),
+        'type'      => $request->input('type', 'text'),
+        'file_path' => $filePath,
+        'parent_id' => $request->input('parent_id'),
+        'is_pinned' => false,
+        'is_edited' => false,
+    ]);
 
-        if ($chat->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Tidak diizinkan'], 403);
-        }
+    // LOGIKA KRUSIAL: Jika dari web, lakukan redirect balik
+    if ($request->wantsJson() || $request->is('api/*')) {
+        return response()->json($chat, 201);
+    }
 
-        $request->validate(['message' => 'required|string|max:5000']);
+    return back(); 
+}
 
-        $chat->update([
-            'message'   => $request->input('message'),
-            'is_edited' => true,
-        ]);
+   // Ganti fungsi-fungsi berikut di ChatController.php
 
+public function update(Request $request, $id)
+{
+    $chat = Chat::findOrFail($id);
+
+    // Cek apakah ini pesan milik Rizka
+    if ((int)$chat->user_id !== (int)Auth::id()) {
+        return request()->wantsJson() ? response()->json(['message' => 'Tidak diizinkan'], 403) : back();
+    }
+
+    $request->validate(['message' => 'required|string|max:5000']);
+
+    $chat->update([
+        'message'   => $request->input('message'),
+        'is_edited' => true,
+    ]);
+
+    // Jika dari web, segarkan halaman
+    if ($request->wantsJson() || $request->is('api/*')) {
         return response()->json(['message' => 'Pesan diperbarui', 'chat' => $chat]);
     }
 
-    // ── DELETE /api/chats/{id} ────────────────────────────────────────────────
-    // Hapus pesan + file terkait. Hanya pemilik pesan yang boleh.
-    public function destroy($id)
-    {
-        $chat = Chat::findOrFail($id);
+    return back()->with('success', 'Pesan berhasil diedit');
+}
 
-        if ($chat->user_id !== Auth::id()) {
-            return response()->json(['message' => 'Tidak diizinkan'], 403);
-        }
-
-        // Hapus file dari public/uploads jika ada
-        if ($chat->file_path) {
-            $fullPath = public_path($chat->file_path);
-            if (file_exists($fullPath)) {
-                unlink($fullPath);
-            }
-        }
-
-        // Hapus seen records
-        ChatSeen::where('chat_id', $id)->delete();
-
-        $chat->delete();
-
-        return response()->json(['message' => 'Pesan dihapus']);
+public function destroy($id)
+{
+    $chat = Chat::findOrFail($id);
+    if ($chat->user_id !== Auth::id()) {
+        return request()->wantsJson() ? response()->json(['message' => 'Tidak diizinkan'], 403) : back();
     }
 
-    // ── POST /api/chats/{id}/pin ──────────────────────────────────────────────
-    // Pin sebuah pesan (semua user boleh pin).
-    public function pin($id)
-    {
-        $chat = Chat::findOrFail($id);
-        $chat->update(['is_pinned' => true]);
-        return response()->json(['message' => 'Pesan dipin', 'is_pinned' => true]);
+    if ($chat->file_path && file_exists(public_path($chat->file_path))) {
+        unlink(public_path($chat->file_path));
     }
 
-    // ── POST /api/chats/{id}/unpin ────────────────────────────────────────────
-    // Hapus pin dari pesan.
-    public function unpin($id)
-    {
-        $chat = Chat::findOrFail($id);
-        $chat->update(['is_pinned' => false]);
-        return response()->json(['message' => 'Pin dihapus', 'is_pinned' => false]);
-    }
+    ChatSeen::where('chat_id', $id)->delete();
+    $chat->delete();
+
+    return (request()->wantsJson() || request()->is('api/*')) 
+        ? response()->json(['message' => 'Pesan dihapus']) 
+        : back();
+}
+
+public function pin($id)
+{
+    Chat::findOrFail($id)->update(['is_pinned' => true]);
+    return (request()->wantsJson() || request()->is('api/*')) 
+        ? response()->json(['message' => 'Pesan dipin', 'is_pinned' => true]) 
+        : back();
+}
+
+public function unpin($id)
+{
+    Chat::findOrFail($id)->update(['is_pinned' => false]);
+    return (request()->wantsJson() || request()->is('api/*')) 
+        ? response()->json(['message' => 'Pin dihapus', 'is_pinned' => false]) 
+        : back();
+}
 
     // ── POST /api/chats/{id}/seen ─────────────────────────────────────────────
     // Tandai pesan sudah dilihat oleh user saat ini.
