@@ -21,6 +21,61 @@
         .stat-value { font-size: 13px; font-weight: 500; color: #111827; margin-top: 3px; }
         .section-divider { font-size: 10px; font-weight: 800; color: #6366f1; text-transform: uppercase; letter-spacing: 0.1em; margin: 20px 0 10px 0; display: block; border-bottom: 1px solid #f3f4f6; padding-bottom: 5px; }
 
+        /* ── Toggle Switch ── */
+        .toggle-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 14px;
+            padding: 14px 16px;
+            margin-bottom: 4px;
+            transition: all 0.2s;
+        }
+        .toggle-wrapper.active-on {
+            background: linear-gradient(135deg, #ecfdf5, #d1fae5);
+            border-color: #6ee7b7;
+        }
+        .toggle-wrapper.active-off {
+            background: linear-gradient(135deg, #fff7ed, #ffedd5);
+            border-color: #fbbf24;
+        }
+        .toggle-label { font-size: 13px; font-weight: 600; color: #1f2937; }
+        .toggle-sublabel { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+        /* iOS-style toggle */
+        .ios-toggle { position: relative; display: inline-block; width: 52px; height: 28px; flex-shrink: 0; }
+        .ios-toggle input { opacity: 0; width: 0; height: 0; }
+        .ios-slider {
+            position: absolute; cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #d1d5db;
+            transition: 0.3s;
+            border-radius: 28px;
+        }
+        .ios-slider:before {
+            position: absolute; content: "";
+            height: 22px; width: 22px;
+            left: 3px; bottom: 3px;
+            background: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+        input:checked + .ios-slider { background: #10b981; }
+        input:checked + .ios-slider:before { transform: translateX(24px); }
+
+        /* ── Radius section toggle ── */
+        .radius-section {
+            transition: opacity 0.3s, max-height 0.3s;
+            overflow: hidden;
+        }
+        .radius-section.disabled-section {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+
         /* Auto-approve info panel */
         .auto-info-card {
             background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
@@ -61,6 +116,7 @@
         }
         .badge-auto { background: #dcfce7; color: #15803d; }
         .badge-manual { background: #fef3c7; color: #92400e; }
+        .badge-off { background: #ffedd5; color: #c2410c; }
     </style>
 
     <div class="py-8">
@@ -89,15 +145,17 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {{-- Syarat Auto Approve --}}
-                    <div class="auto-info-card">
+                    <div class="auto-info-card" id="auto-approve-card">
                         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
                             <span style="font-size:11px;font-weight:800;color:#1e40af;text-transform:uppercase;letter-spacing:0.05em;">✓ Auto-Approve (Kantor)</span>
-                            <span class="check-badge badge-auto">Langsung Disetujui</span>
+                            <span class="check-badge badge-auto" id="auto-badge">Langsung Disetujui</span>
                         </div>
-                        <div class="auto-rule">
+                        <div class="auto-rule" id="rule-radius">
                             <div class="icon">📍</div>
-                            <div><strong>Dalam radius {{ $setting->radius ?? 50 }}m</strong> dari koordinat kantor<br>
-                            <span style="color:#3b82f6;font-size:11px;">{{ $setting->latitude ?? '-' }}, {{ $setting->longitude ?? '-' }}</span></div>
+                            <div id="rule-radius-text">
+                                <strong>Dalam radius <span id="info-radius">{{ $setting->radius ?? 50 }}</span>m</strong> dari koordinat kantor<br>
+                                <span style="color:#3b82f6;font-size:11px;">{{ $setting->latitude ?? '-' }}, {{ $setting->longitude ?? '-' }}</span>
+                            </div>
                         </div>
                         <div class="auto-rule">
                             <div class="icon">⏰</div>
@@ -116,9 +174,9 @@
                             <span style="font-size:11px;font-weight:800;color:#92400e;text-transform:uppercase;letter-spacing:0.05em;">⏳ Perlu Validasi Admin</span>
                             <span class="check-badge badge-manual">Menunggu Approval</span>
                         </div>
-                        <div class="auto-rule" style="border-color:#fde68a;color:#78350f;">
+                        <div class="auto-rule" style="border-color:#fde68a;color:#78350f;" id="pending-radius-rule">
                             <div class="icon">🏠</div>
-                            <div><strong>Di luar radius kantor</strong>
+                            <div id="pending-radius-text"><strong>Di luar radius kantor</strong>
                             <span style="color:#d97706;font-size:11px;">Butuh persetujuan admin di halaman Approval</span></div>
                         </div>
                         <div class="auto-rule" style="border-color:#fde68a;color:#78350f;">
@@ -139,28 +197,53 @@
                 <div class="md:col-span-1 bg-white border border-gray-100 rounded-2xl shadow-sm p-6 flex flex-col">
                     <form action="{{ route('admin.presence.updateSettings') }}" method="POST" class="flex flex-col flex-1">
                         @csrf
-                        
-                        <span class="section-divider" style="margin-top: 0">Lokasi & Radius</span>
+
+                        {{-- ══════════════════════════════════════════════════════ --}}
+                        {{-- TOGGLE: Radius Enforcement ON / OFF                    --}}
+                        {{-- ══════════════════════════════════════════════════════ --}}
+                        <span class="section-divider" style="margin-top:0;">Pengaturan Radius</span>
+
+                        <div class="toggle-wrapper {{ ($setting->radius_enforced ?? true) ? 'active-on' : 'active-off' }}" id="radius-toggle-wrapper">
+                            <div>
+                                <div class="toggle-label" id="radius-toggle-label">
+                                    {{ ($setting->radius_enforced ?? true) ? '🟢 Radius Aktif (ON)' : '🟡 Radius Nonaktif (OFF)' }}
+                                </div>
+                                <div class="toggle-sublabel" id="radius-toggle-sub">
+                                    {{ ($setting->radius_enforced ?? true) 
+                                        ? 'Karyawan wajib absen dalam radius kantor untuk auto-approve' 
+                                        : 'Karyawan bisa absen di mana saja, tapi selalu masuk antrian approval' }}
+                                </div>
+                            </div>
+                            <label class="ios-toggle">
+                                <input type="checkbox" name="radius_enforced" id="radius-toggle-input" value="1"
+                                    {{ ($setting->radius_enforced ?? true) ? 'checked' : '' }}
+                                    onchange="handleRadiusToggle(this.checked)">
+                                <span class="ios-slider"></span>
+                            </label>
+                        </div>
+
+                        {{-- Radius value (disabled saat OFF) --}}
+                        <div class="radius-section {{ ($setting->radius_enforced ?? true) ? '' : 'disabled-section' }}" id="radius-section" style="margin-top:12px;">
+                            <label class="field-label">Radius Absensi</label>
+                            <div class="relative">
+                                <input id="radius" name="radius" type="number" class="field-input" style="padding-right: 36px;"
+                                       value="{{ $setting->radius ?? '50' }}" required />
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">m</span>
+                            </div>
+                            <p style="font-size:10px;color:#9ca3af;margin-top:4px;">Jarak maksimum dari titik koordinat kantor</p>
+                        </div>
+
+                        <span class="section-divider">Lokasi Kantor</span>
                         <div class="space-y-4">
                             <div>
                                 <label for="latitude" class="field-label">Latitude</label>
-                                <input id="latitude" name="latitude" type="text" class="field-input" 
+                                <input id="latitude" name="latitude" type="text" class="field-input"
                                        value="{{ $setting->latitude ?? '-6.200000' }}" required />
                             </div>
-
                             <div>
                                 <label for="longitude" class="field-label">Longitude</label>
-                                <input id="longitude" name="longitude" type="text" class="field-input" 
+                                <input id="longitude" name="longitude" type="text" class="field-input"
                                        value="{{ $setting->longitude ?? '106.816600' }}" required />
-                            </div>
-
-                            <div>
-                                <label for="radius" class="field-label">Radius Absensi</label>
-                                <div class="relative">
-                                    <input id="radius" name="radius" type="number" class="field-input" style="padding-right: 36px;"
-                                           value="{{ $setting->radius ?? '50' }}" required />
-                                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">m</span>
-                                </div>
                             </div>
                         </div>
 
@@ -169,19 +252,19 @@
                             <div class="grid grid-cols-2 gap-3">
                                 <div>
                                     <label class="field-label">Jam Masuk</label>
-                                    <input name="check_in_time" type="time" class="field-input" 
+                                    <input name="check_in_time" type="time" class="field-input"
                                            value="{{ substr($setting->check_in_time ?? '08:00', 0, 5) }}" required>
                                 </div>
                                 <div>
                                     <label class="field-label">Jam Pulang</label>
-                                    <input name="check_out_time" type="time" class="field-input" 
+                                    <input name="check_out_time" type="time" class="field-input"
                                            value="{{ substr($setting->check_out_time ?? '17:00', 0, 5) }}" required>
                                 </div>
                             </div>
                             <div>
                                 <label class="field-label">Toleransi (Menit)</label>
                                 <div class="relative">
-                                    <input name="late_tolerance" type="number" class="field-input" 
+                                    <input name="late_tolerance" type="number" class="field-input"
                                            value="{{ $setting->late_tolerance ?? '15' }}" required />
                                     <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">min</span>
                                 </div>
@@ -194,7 +277,7 @@
                             <p style="font-size:12px;color:#166534;">
                                 Absen masuk disetujui otomatis jika:<br>
                                 • Jam <strong id="preview-start">-</strong> s/d <strong id="preview-end">-</strong><br>
-                                • Dalam radius <strong id="preview-radius">-</strong> m dari titik kantor<br>
+                                • <span id="preview-radius-text">Dalam radius <strong id="preview-radius">-</strong> m dari titik kantor</span><br>
                                 • Bukan hari libur
                             </p>
                         </div>
@@ -210,18 +293,24 @@
                 <div class="md:col-span-2 bg-white border border-gray-100 rounded-2xl shadow-sm p-6">
                     <div class="flex items-center justify-between mb-4">
                         <p class="field-label">Visualisasi Area</p>
-                        <span class="text-xs font-medium text-emerald-600 flex items-center gap-1">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Live Map
-                        </span>
+                        <div class="flex items-center gap-2">
+                            <span id="map-radius-status"
+                                class="text-xs font-bold px-3 py-1 rounded-full {{ ($setting->radius_enforced ?? true) ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700' }}">
+                                {{ ($setting->radius_enforced ?? true) ? '🟢 Radius ON' : '🟡 Radius OFF' }}
+                            </span>
+                            <span class="text-xs font-medium text-emerald-600 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Live Map
+                            </span>
+                        </div>
                     </div>
 
-                    <div id="map" class="rounded-xl border border-gray-100" style="height: 400px;"></div>
+                    <div id="map" class="rounded-xl border border-gray-100" style="height: 380px;"></div>
 
                     <div class="grid grid-cols-3 gap-2.5 mt-4">
                         <div class="stat-card">
                             <div class="stat-label">Koordinat</div>
                             <div class="stat-value text-[11px]">
-                                <span id="lat-disp">{{ $setting->latitude ?? '-6.200000' }}</span>, 
+                                <span id="lat-disp">{{ $setting->latitude ?? '-6.200000' }}</span>,
                                 <span id="lng-disp">{{ $setting->longitude ?? '106.816600' }}</span>
                             </div>
                         </div>
@@ -230,13 +319,36 @@
                             <div class="stat-value">{{ substr($setting->check_in_time ?? '08:00', 0, 5) }} - {{ substr($setting->check_out_time ?? '17:00', 0, 5) }}</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-label">Radius & Tol.</div>
-                            <div class="stat-value"><span id="radius-disp">{{ $setting->radius ?? '50' }}</span>m / {{ $setting->late_tolerance ?? '15' }}m</div>
+                            <div class="stat-label">Radius / Mode</div>
+                            <div class="stat-value" id="stat-radius-val">
+                                @if($setting->radius_enforced ?? true)
+                                    <span id="radius-disp">{{ $setting->radius ?? '50' }}</span>m wajib
+                                @else
+                                    <span class="text-amber-600 font-bold">Bebas Radius</span>
+                                @endif
+                            </div>
+                        </div>
+                    </div>
+
+                    {{-- ── Status Radius Enforcement ── --}}
+                    <div id="radius-status-banner" class="mt-4 rounded-xl p-4 border {{ ($setting->radius_enforced ?? true) ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200' }}">
+                        <div class="flex items-center gap-3">
+                            <span style="font-size:22px;">{{ ($setting->radius_enforced ?? true) ? '🟢' : '🟡' }}</span>
+                            <div>
+                                <p class="font-bold text-sm {{ ($setting->radius_enforced ?? true) ? 'text-emerald-800' : 'text-amber-800' }}" id="status-banner-title">
+                                    {{ ($setting->radius_enforced ?? true) ? 'Radius Aktif — Karyawan wajib absen dalam radius' : 'Radius Nonaktif — Karyawan bebas absen dari mana saja' }}
+                                </p>
+                                <p class="text-xs mt-1 {{ ($setting->radius_enforced ?? true) ? 'text-emerald-600' : 'text-amber-600' }}" id="status-banner-sub">
+                                    {{ ($setting->radius_enforced ?? true) 
+                                        ? 'Absen dalam radius → auto-approve. Di luar radius → masuk antrian approval admin.' 
+                                        : 'Semua absensi masuk antrian approval admin, terlepas dari lokasi.' }}
+                                </p>
+                            </div>
                         </div>
                     </div>
 
                     {{-- Simulasi jarak --}}
-                    <div class="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <div class="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-4" id="sim-box">
                         <p class="text-xs font-bold text-gray-500 uppercase mb-3">Cek Posisi Karyawan (Simulasi)</p>
                         <div class="flex gap-3 items-end">
                             <div class="flex-1">
@@ -262,27 +374,96 @@
     <script>
         var initialLat = {{ $setting->latitude ?? -6.2000 }};
         var initialLng = {{ $setting->longitude ?? 106.8166 }};
+        var radiusEnforced = {{ ($setting->radius_enforced ?? true) ? 'true' : 'false' }};
         var radiusCircle = null;
 
         var map = L.map('map').setView([initialLat, initialLng], 16);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
         var marker = L.marker([initialLat, initialLng], { draggable: true }).addTo(map);
 
-        function drawRadiusCircle(lat, lng, radius) {
+        function drawRadiusCircle(lat, lng, radius, enforced) {
             if (radiusCircle) map.removeLayer(radiusCircle);
-            radiusCircle = L.circle([lat, lng], {
-                radius: radius,
-                color: '#2563eb',
-                fillColor: '#2563eb',
-                fillOpacity: 0.1,
-                weight: 2,
-                dashArray: '5,5'
-            }).addTo(map);
+            if (!enforced) {
+                // Lingkaran putus-putus tipis saat radius OFF
+                radiusCircle = L.circle([lat, lng], {
+                    radius: radius,
+                    color: '#f59e0b',
+                    fillColor: '#fef3c7',
+                    fillOpacity: 0.08,
+                    weight: 1.5,
+                    dashArray: '8,6'
+                }).addTo(map);
+            } else {
+                radiusCircle = L.circle([lat, lng], {
+                    radius: radius,
+                    color: '#2563eb',
+                    fillColor: '#2563eb',
+                    fillOpacity: 0.1,
+                    weight: 2,
+                    dashArray: '5,5'
+                }).addTo(map);
+            }
         }
 
-        drawRadiusCircle(initialLat, initialLng, {{ $setting->radius ?? 50 }});
+        drawRadiusCircle(initialLat, initialLng, {{ $setting->radius ?? 50 }}, radiusEnforced);
         updatePreview();
+
+        // ── Handle toggle radius ON/OFF ────────────────────────────────────────
+        function handleRadiusToggle(isOn) {
+            radiusEnforced = isOn;
+            var wrapper = document.getElementById('radius-toggle-wrapper');
+            var label = document.getElementById('radius-toggle-label');
+            var sub = document.getElementById('radius-toggle-sub');
+            var section = document.getElementById('radius-section');
+            var mapStatus = document.getElementById('map-radius-status');
+            var bannerTitle = document.getElementById('status-banner-title');
+            var bannerSub = document.getElementById('status-banner-sub');
+            var banner = document.getElementById('radius-status-banner');
+            var ruleRadius = document.getElementById('rule-radius');
+            var pendingRadius = document.getElementById('pending-radius-rule');
+            var previewRadiusText = document.getElementById('preview-radius-text');
+            var statRadius = document.getElementById('stat-radius-val');
+
+            if (isOn) {
+                wrapper.className = 'toggle-wrapper active-on';
+                label.textContent = '🟢 Radius Aktif (ON)';
+                sub.textContent = 'Karyawan wajib absen dalam radius kantor untuk auto-approve';
+                section.classList.remove('disabled-section');
+                mapStatus.className = 'text-xs font-bold px-3 py-1 rounded-full bg-emerald-100 text-emerald-700';
+                mapStatus.textContent = '🟢 Radius ON';
+                banner.className = 'mt-4 rounded-xl p-4 border bg-emerald-50 border-emerald-200';
+                bannerTitle.className = 'font-bold text-sm text-emerald-800';
+                bannerTitle.textContent = 'Radius Aktif — Karyawan wajib absen dalam radius';
+                bannerSub.className = 'text-xs mt-1 text-emerald-600';
+                bannerSub.textContent = 'Absen dalam radius → auto-approve. Di luar radius → masuk antrian approval admin.';
+                ruleRadius.style.display = 'flex';
+                pendingRadius.innerHTML = '<div class="icon">🏠</div><div><strong>Di luar radius kantor</strong> <span style="color:#d97706;font-size:11px;">Butuh persetujuan admin di halaman Approval</span></div>';
+                var r = parseInt(document.getElementById('radius').value) || 50;
+                previewRadiusText.innerHTML = 'Dalam radius <strong id="preview-radius">' + r + '</strong> m dari titik kantor';
+                statRadius.innerHTML = '<span id="radius-disp">' + r + '</span>m wajib';
+            } else {
+                wrapper.className = 'toggle-wrapper active-off';
+                label.textContent = '🟡 Radius Nonaktif (OFF)';
+                sub.textContent = 'Karyawan bisa absen di mana saja, tapi selalu masuk antrian approval';
+                section.classList.add('disabled-section');
+                mapStatus.className = 'text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-700';
+                mapStatus.textContent = '🟡 Radius OFF';
+                banner.className = 'mt-4 rounded-xl p-4 border bg-amber-50 border-amber-200';
+                bannerTitle.className = 'font-bold text-sm text-amber-800';
+                bannerTitle.textContent = 'Radius Nonaktif — Karyawan bebas absen dari mana saja';
+                bannerSub.className = 'text-xs mt-1 text-amber-600';
+                bannerSub.textContent = 'Semua absensi masuk antrian approval admin, terlepas dari lokasi.';
+                pendingRadius.innerHTML = '<div class="icon">🌍</div><div><strong>Semua lokasi → masuk antrian approval</strong> <span style="color:#d97706;font-size:11px;">Karena radius dinonaktifkan admin</span></div>';
+                previewRadiusText.innerHTML = '<span style="color:#f59e0b;font-weight:700;">Radius dinonaktifkan — semua absensi masuk approval</span>';
+                statRadius.innerHTML = '<span class="text-amber-600 font-bold">Bebas Radius</span>';
+            }
+
+            // Redraw circle
+            var lat = parseFloat(document.getElementById('latitude').value);
+            var lng = parseFloat(document.getElementById('longitude').value);
+            var r = parseInt(document.getElementById('radius').value) || 50;
+            if (!isNaN(lat) && !isNaN(lng)) drawRadiusCircle(lat, lng, r, isOn);
+        }
 
         function updateDisplay(lat, lng) {
             document.getElementById('lat-disp').textContent = parseFloat(lat).toFixed(6);
@@ -294,7 +475,7 @@
             document.getElementById('longitude').value = lng.toFixed(6);
             updateDisplay(lat, lng);
             var r = parseFloat(document.getElementById('radius').value) || 50;
-            drawRadiusCircle(lat, lng, r);
+            drawRadiusCircle(lat, lng, r, radiusEnforced);
         }
 
         function syncInputToMap() {
@@ -306,7 +487,7 @@
                 map.panTo(newPos);
                 updateDisplay(lat, lng);
                 var r = parseFloat(document.getElementById('radius').value) || 50;
-                drawRadiusCircle(lat, lng, r);
+                drawRadiusCircle(lat, lng, r, radiusEnforced);
             }
         }
 
@@ -325,14 +506,17 @@
 
         document.getElementById('radius').addEventListener('input', function () {
             var r = parseInt(this.value) || 0;
-            document.getElementById('radius-disp').textContent = r;
+            // Update stat display
+            var statEl = document.getElementById('stat-radius-val');
+            if (radiusEnforced) {
+                statEl.innerHTML = '<span id="radius-disp">' + r + '</span>m wajib';
+            }
             var lat = parseFloat(document.getElementById('latitude').value);
             var lng = parseFloat(document.getElementById('longitude').value);
-            if (!isNaN(lat) && !isNaN(lng)) drawRadiusCircle(lat, lng, r);
+            if (!isNaN(lat) && !isNaN(lng)) drawRadiusCircle(lat, lng, r, radiusEnforced);
             updatePreview();
         });
 
-        // Input jam masuk / toleransi → update preview
         document.querySelector('[name="check_in_time"]').addEventListener('change', updatePreview);
         document.querySelector('[name="late_tolerance"]').addEventListener('input', updatePreview);
 
@@ -355,7 +539,11 @@
 
             document.getElementById('preview-start').textContent = start;
             document.getElementById('preview-end').textContent   = end;
-            document.getElementById('preview-radius').textContent = radius;
+
+            var previewEl = document.getElementById('preview-radius');
+            if (previewEl) previewEl.textContent = radius;
+
+            document.getElementById('info-radius').textContent = radius;
         }
 
         function getLocation() {
@@ -369,7 +557,7 @@
             });
         }
 
-        // ── Simulasi jarak ────────────────────────────────────────────────
+        // ── Simulasi jarak ─────────────────────────────────────────────────────
         function simulateDistance() {
             var simLat = parseFloat(document.getElementById('sim-lat').value);
             var simLng = parseFloat(document.getElementById('sim-lng').value);
@@ -386,13 +574,22 @@
             var result = document.getElementById('sim-result');
             result.classList.remove('hidden');
 
-            if (dist <= radius) {
+            if (window._simMarker) map.removeLayer(window._simMarker);
+
+            if (!radiusEnforced) {
+                // Radius OFF → semua masuk approval
+                result.style.background = '#fff7ed';
+                result.style.color      = '#92400e';
+                result.style.border     = '1px solid #fde68a';
+                result.innerHTML = '⚠ <strong>Radius Dinonaktifkan</strong> — Jarak ' + Math.round(dist) + ' m. Semua absensi masuk <strong>antrian Approval Admin</strong>.';
+                window._simMarker = L.marker([simLat, simLng], {
+                    icon: L.divIcon({ html: '<div style="background:#f59e0b;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.3);">K</div>', className: '' })
+                }).addTo(map).bindPopup('Posisi Karyawan — Radius nonaktif').openPopup();
+            } else if (dist <= radius) {
                 result.style.background = '#dcfce7';
                 result.style.color      = '#15803d';
                 result.style.border     = '1px solid #bbf7d0';
                 result.innerHTML = '✓ <strong>Dalam Radius</strong> — Jarak ' + Math.round(dist) + ' m (batas ' + radius + ' m). Absensi akan <strong>disetujui otomatis</strong>.';
-                // Tambah marker simulasi
-                if (window._simMarker) map.removeLayer(window._simMarker);
                 window._simMarker = L.marker([simLat, simLng], {
                     icon: L.divIcon({ html: '<div style="background:#15803d;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.3);">K</div>', className: '' })
                 }).addTo(map).bindPopup('Posisi Karyawan — ' + Math.round(dist) + ' m dari kantor').openPopup();
@@ -401,7 +598,6 @@
                 result.style.color      = '#92400e';
                 result.style.border     = '1px solid #fde68a';
                 result.innerHTML = '⚠ <strong>Di Luar Radius</strong> — Jarak ' + Math.round(dist) + ' m (batas ' + radius + ' m). Absensi akan masuk ke <strong>antrian Approval (WFH)</strong>.';
-                if (window._simMarker) map.removeLayer(window._simMarker);
                 window._simMarker = L.marker([simLat, simLng], {
                     icon: L.divIcon({ html: '<div style="background:#d97706;color:white;border-radius:50%;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;box-shadow:0 2px 8px rgba(0,0,0,0.3);">K</div>', className: '' })
                 }).addTo(map).bindPopup('Posisi Karyawan — ' + Math.round(dist) + ' m dari kantor').openPopup();
