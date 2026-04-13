@@ -17,6 +17,7 @@ class Leave extends Model
         'end_date',
         'reason',
         'attachment_file',
+        'attachment_photo',
         'status',
     ];
 

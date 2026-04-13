@@ -44,13 +44,12 @@ class PresenceApprovalController extends Controller
      */
     public function perizinan(Request $request)
     {
-        // Kita ambil SEMUA data dari tabel leaves agar Riwayat juga bisa tampil
-        $permissions = Leave::with('user')
-            ->orderByRaw("FIELD(status, 'pending', 'approved', 'rejected')") // Pending tetap di atas
+        $leaves = Leave::with('user')
+            ->where('status', 'pending')
             ->orderByDesc('created_at')
             ->get();
-
-        return view('admin.attendance.perizinan', compact('permissions'));
+ 
+        return view('admin.attendance.perizinan', compact('leaves'));
     }
  
     public function leaveApprove(Request $request, $id)
@@ -161,46 +160,40 @@ public function schedule()
     /**
      * 4. Riwayat Presensi
      */
-   public function history(Request $request)
-{
-    $selectedMonth = (int) $request->query('month', now()->month);
-    $selectedYear  = (int) $request->query('year',  now()->year);
-    $search        = $request->query('search');
-
-    $months = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
-
-    $usersQuery = User::with('division')->where('role', '!=', 'kepala');
-    if ($search) {
-        $usersQuery->where('name', 'like', "%{$search}%");
+    public function history(Request $request)
+    {
+        $selectedMonth = (int) $request->query('month', now()->month);
+        $selectedYear  = (int) $request->query('year',  now()->year);
+        $search        = $request->query('search');
+ 
+        $months = [
+            'Januari','Februari','Maret','April','Mei','Juni',
+            'Juli','Agustus','September','Oktober','November','Desember',
+        ];
+ 
+        $usersQuery = User::with('division')->where('role', '!=', 'kepala');
+        if ($search) {
+            $usersQuery->where('name', 'like', "%{$search}%");
+        }
+        $users = $usersQuery->orderBy('name')->get();
+ 
+        $presenceData = Presence::whereMonth('date', $selectedMonth)
+            ->whereYear('date', $selectedYear)
+            ->whereIn('user_id', $users->pluck('id'))
+            ->orderBy('date', 'desc')
+            ->get()
+            ->groupBy('user_id');
+ 
+        $allPresences  = $presenceData->flatten();
+        $totalApproved = $allPresences->where('is_approved', 'approved')->count();
+        $totalPending  = $allPresences->where('is_approved', 'pending')->count();
+        $totalRejected = $allPresences->where('is_approved', 'rejected')->count();
+ 
+        return view('admin.attendance.history', compact(
+            'users', 'presenceData', 'selectedMonth', 'selectedYear',
+            'months', 'totalApproved', 'totalPending', 'totalRejected'
+        ));
     }
-    $users = $usersQuery->orderBy('name')->get();
-
-    // 1. Ambil data absensi normal
-    $presenceData = Presence::whereMonth('date', $selectedMonth)
-        ->whereYear('date', $selectedYear)
-        ->get()
-        ->groupBy('user_id');
-
-    // 2. Ambil data perizinan yang sudah di-approve
-    $leaveData = Leave::where('status', 'approved')
-        ->where(function($q) use ($selectedMonth, $selectedYear) {
-            $q->whereMonth('start_date', $selectedMonth)->whereYear('start_date', $selectedYear)
-              ->orWhereMonth('end_date', $selectedMonth)->whereYear('end_date', $selectedYear);
-        })
-        ->get()
-        ->groupBy('user_id');
-
-    // Hitung statistik untuk Hero Header
-    $allPresences = Presence::whereMonth('date', $selectedMonth)->whereYear('date', $selectedYear)->get();
-    $totalApproved = $allPresences->where('is_approved', 'approved')->count();
-    $totalPending  = $allPresences->where('is_approved', 'pending')->count();
-    $totalRejected = $allPresences->where('is_approved', 'rejected')->count();
-
-    return view('admin.attendance.history', compact(
-        'users', 'presenceData', 'leaveData', 'selectedMonth', 'selectedYear', 
-        'months', 'totalApproved', 'totalPending', 'totalRejected'
-    ));
-}
 
     /**
      * 5. Settings Absensi

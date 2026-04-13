@@ -157,13 +157,14 @@
     font-weight: 700;
     letter-spacing: 0.5px;
     text-transform: uppercase;
-    padding: 10px 14px;
+    padding: 10px 12px;
     text-align: left;
+    white-space: nowrap;
 }
 .presence-table th:first-child { border-radius: 10px 0 0 10px; }
 .presence-table th:last-child  { border-radius: 0 10px 10px 0; }
 .presence-table td {
-    padding: 12px 14px;
+    padding: 10px 12px;
     font-size: 13px;
     color: #2c3e6b;
     border-bottom: 1px solid #f0f4ff;
@@ -201,6 +202,64 @@
     margin-right: 5px;
 }
 
+/* ── Photo thumbnail ── */
+.photo-thumb {
+    width: 38px; height: 38px;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1.5px solid #e3e8f4;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    transition: transform 0.2s, box-shadow 0.2s;
+    cursor: pointer;
+    display: block;
+}
+.photo-thumb:hover {
+    transform: scale(1.08);
+    box-shadow: 0 4px 14px rgba(21,101,192,0.2);
+    border-color: #1565c0;
+}
+.photo-empty {
+    width: 38px; height: 38px;
+    background: #f3f4f6;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+}
+
+/* Lightbox */
+#photo-lightbox {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85);
+    z-index: 9999;
+    align-items: center; justify-content: center;
+    flex-direction: column;
+    gap: 16px;
+    backdrop-filter: blur(4px);
+}
+#photo-lightbox.active { display: flex; }
+#photo-lightbox img {
+    max-width: 90vw;
+    max-height: 80vh;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+#photo-lightbox button {
+    position: absolute; top: 20px; right: 24px;
+    background: rgba(255,255,255,0.15);
+    border: none; color: white; font-size: 26px;
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.2s;
+}
+#photo-lightbox button:hover { background: rgba(255,255,255,0.25); }
+#lightbox-caption {
+    color: rgba(255,255,255,0.7);
+    font-size: 13px;
+    font-weight: 600;
+}
+
 .empty-row td {
     text-align: center;
     padding: 32px;
@@ -213,9 +272,16 @@
     .filter-bar { flex-direction: column; align-items: stretch; }
     .filter-bar select, .filter-bar input, .filter-btn { width: 100%; }
     .presence-table { font-size: 12px; }
-    .presence-table th, .presence-table td { padding: 9px 10px; }
+    .presence-table th, .presence-table td { padding: 8px 9px; }
 }
 </style>
+
+{{-- Lightbox overlay --}}
+<div id="photo-lightbox" onclick="closeLightbox(event)">
+    <button onclick="closeLightbox()">×</button>
+    <img id="lightbox-img" src="" alt="Foto Absensi">
+    <span id="lightbox-caption"></span>
+</div>
 
 <div class="attendance-bg p-4 md:p-8">
 
@@ -301,12 +367,8 @@
     @php
         $records  = $presenceData[$user->id] ?? collect();
 
-        // Hadir = approved IN + sudah ada check_out
         $approved = $records->where('is_approved', 'approved')->whereNotNull('check_out')->count();
-
-        // Belum Check Out = approved IN tapi check_out masih null
         $belumOut = $records->where('is_approved', 'approved')->whereNull('check_out')->count();
-
         $pending  = $records->where('is_approved', 'pending')->count();
         $rejected = $records->where('is_approved', 'rejected')->count();
 
@@ -331,43 +393,32 @@
             </div>
             <div style="display:flex;align-items:center;gap:10px;">
                 <div class="emp-badges">
-                    {{-- Hadir: approved IN + sudah checkout --}}
                     @if($approved > 0)
                     <span class="badge badge-green">
                         <svg width="9" height="9" fill="#2e7d32" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $approved }} Hadir
                     </span>
                     @endif
-
-                    {{-- Belum Check Out: approved IN tapi belum checkout --}}
                     @if($belumOut > 0)
                     <span class="badge badge-blue">
                         <svg width="9" height="9" fill="#1565c0" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $belumOut }} Belum Check Out
                     </span>
                     @endif
-
-                    {{-- Pending --}}
                     @if($pending > 0)
                     <span class="badge badge-amber">
                         <svg width="9" height="9" fill="#e65100" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $pending }} Pending
                     </span>
                     @endif
-
-                    {{-- Ditolak --}}
                     @if($rejected > 0)
                     <span class="badge badge-red">
                         <svg width="9" height="9" fill="#c62828" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>
                         {{ $rejected }} Ditolak
                     </span>
                     @endif
-
-                    {{-- Tidak ada data --}}
                     @if($records->count() == 0)
-                    <span class="badge" style="background:#f5f5f5;color:#9e9e9e;border:1px solid #e0e0e0;">
-                        Tidak ada data
-                    </span>
+                    <span class="badge" style="background:#f5f5f5;color:#9e9e9e;border:1px solid #e0e0e0;">Tidak ada data</span>
                     @endif
                 </div>
                 <div class="toggle-icon" :class="{ open: open }">
@@ -384,158 +435,191 @@
              x-transition:enter-start="opacity-0 -translate-y-2"
              x-transition:enter-end="opacity-100 translate-y-0">
 
-            <table class="presence-table">
-                <thead>
-                    <tr>
-                        <th>Tanggal</th>
-                        <th>Hari</th>
-                        <th>Masuk</th>
-                        <th>Pulang</th>
-                        <th>Durasi</th>
-                        <th>Ket. IN</th>
-                        <th>Ket. OUT</th>
-                        <th>Status IN</th>
-                        <th>Status OUT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @forelse($records as $rec)
-                    @php
-                        $dt = \Carbon\Carbon::parse($rec->date);
-                        $days = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
-                        $dayName = $days[$dt->dayOfWeek == 0 ? 6 : $dt->dayOfWeek - 1];
+            <div style="overflow-x:auto;">
+                <table class="presence-table">
+                    <thead>
+                        <tr>
+                            <th>Tanggal</th>
+                            <th>Hari</th>
+                            <th>Masuk</th>
+                            <th>Foto IN</th>
+                            <th>Pulang</th>
+                            <th>Foto OUT</th>
+                            <th>Durasi</th>
+                            <th>Ket. IN</th>
+                            <th>Ket. OUT</th>
+                            <th>Status IN</th>
+                            <th>Status OUT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($records as $rec)
+                        @php
+                            $dt = \Carbon\Carbon::parse($rec->date);
+                            $days = ['Sen','Sel','Rab','Kam','Jum','Sab','Min'];
+                            $dayName = $days[$dt->dayOfWeek == 0 ? 6 : $dt->dayOfWeek - 1];
 
-                        $duration = '-';
-                        if ($rec->check_in && $rec->check_out) {
-                            $in  = \Carbon\Carbon::createFromTimeString($rec->check_in);
-                            $out = \Carbon\Carbon::createFromTimeString($rec->check_out);
-                            $diff = $in->diffInMinutes($out);
-                            $duration = ($diff >= 60 ? floor($diff/60).'j ' : '') . ($diff%60) . 'm';
-                        }
+                            $duration = '-';
+                            if ($rec->check_in && $rec->check_out) {
+                                $in  = \Carbon\Carbon::createFromTimeString($rec->check_in);
+                                $out = \Carbon\Carbon::createFromTimeString($rec->check_out);
+                                $diff = $in->diffInMinutes($out);
+                                $duration = ($diff >= 60 ? floor($diff/60).'j ' : '') . ($diff%60) . 'm';
+                            }
 
-                        // Status IN
-                        $statusIn = match($rec->is_approved) {
-                            'approved' => ['dot'=>'#4caf50','bg'=>'#e8f5e9','text'=>'#2e7d32','label'=>'Disetujui'],
-                            'rejected' => ['dot'=>'#f44336','bg'=>'#ffebee','text'=>'#c62828','label'=>'Ditolak'],
-                            default    => ['dot'=>'#ff9800','bg'=>'#fff8e1','text'=>'#e65100','label'=>'Pending'],
-                        };
+                            $statusIn = match($rec->is_approved) {
+                                'approved' => ['dot'=>'#4caf50','bg'=>'#e8f5e9','text'=>'#2e7d32','label'=>'Disetujui'],
+                                'rejected' => ['dot'=>'#f44336','bg'=>'#ffebee','text'=>'#c62828','label'=>'Ditolak'],
+                                default    => ['dot'=>'#ff9800','bg'=>'#fff8e1','text'=>'#e65100','label'=>'Pending'],
+                            };
 
-                        // Status OUT
-                        $approvedOut = $rec->is_approved_out ?? 'pending';
-                        $statusOut = $rec->check_out ? match($approvedOut) {
-                            'approved' => ['dot'=>'#4caf50','bg'=>'#e8f5e9','text'=>'#2e7d32','label'=>'Disetujui'],
-                            'rejected' => ['dot'=>'#f44336','bg'=>'#ffebee','text'=>'#c62828','label'=>'Ditolak'],
-                            default    => ['dot'=>'#ff9800','bg'=>'#fff8e1','text'=>'#e65100','label'=>'Pending'],
-                        } : null;
-                    @endphp
-                    <tr>
-                        <td>
-                            <div style="display:flex;align-items:center;gap:8px;">
-                                <div style="width:32px;height:32px;background:#f0f4ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#1565c0;" class="mono">
-                                    {{ $dt->day }}
+                            $approvedOut = $rec->is_approved_out ?? 'pending';
+                            $statusOut = $rec->check_out ? match($approvedOut) {
+                                'approved' => ['dot'=>'#4caf50','bg'=>'#e8f5e9','text'=>'#2e7d32','label'=>'Disetujui'],
+                                'rejected' => ['dot'=>'#f44336','bg'=>'#ffebee','text'=>'#c62828','label'=>'Ditolak'],
+                                default    => ['dot'=>'#ff9800','bg'=>'#fff8e1','text'=>'#e65100','label'=>'Pending'],
+                            } : null;
+                        @endphp
+                        <tr>
+                            {{-- Tanggal --}}
+                            <td>
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <div style="width:32px;height:32px;background:#f0f4ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#1565c0;" class="mono">
+                                        {{ $dt->day }}
+                                    </div>
+                                    <span style="font-size:12px;color:#8a99b5;">{{ $dt->format('M Y') }}</span>
                                 </div>
-                                <span style="font-size:12px;color:#8a99b5;">{{ $dt->format('M Y') }}</span>
-                            </div>
-                        </td>
-                        <td>
-                            <span style="font-size:12px;font-weight:600;color:#546e7a;">{{ $dayName }}</span>
-                        </td>
-                        <td>
-                            @if($rec->check_in)
-                            <span class="time-chip mono">
-                                <svg width="11" height="11" fill="none" stroke="#1565c0" stroke-width="2" viewBox="0 0 24 24">
-                                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                                </svg>
-                                {{ substr($rec->check_in, 0, 5) }}
-                            </span>
-                            @else
-                            <span class="time-chip empty mono">--:--</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($rec->check_out)
-                            <span class="time-chip out mono">
-                                <svg width="11" height="11" fill="none" stroke="#2e7d32" stroke-width="2" viewBox="0 0 24 24">
-                                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                                </svg>
-                                {{ substr($rec->check_out, 0, 5) }}
-                            </span>
-                            @else
-                            <span class="time-chip empty mono">--:--</span>
-                            @endif
-                        </td>
-                        <td>
-                            @if($duration !== '-')
-                            <span class="duration-pill mono">{{ $duration }}</span>
-                            @else
-                            <span style="color:#ccc;font-size:12px;">—</span>
-                            @endif
-                        </td>
-                        {{-- Keterangan IN --}}
-                        <td style="max-width:140px;">
-                            <span style="font-size:12px;color:#546e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:130px;"
-                                title="{{ $rec->notes }}">
-                                {{ $rec->notes ?? '-' }}
-                            </span>
-                        </td>
-
-                        {{-- Keterangan OUT --}}
-                        <td style="max-width:140px;">
-                            @if($rec->check_out)
-                            <span style="font-size:12px;color:#546e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:130px;"
-                                title="{{ $rec->notes_out }}">
-                                {{ $rec->notes_out ?? '-' }}
-                            </span>
-                            @else
-                            <span style="color:#ccc;font-size:12px;">—</span>
-                            @endif
-                        </td>
-
-                        {{-- Status IN --}}
-                        <td>
-                            <span style="display:inline-flex;align-items:center;gap:5px;
-                                background:{{ $statusIn['bg'] }};color:{{ $statusIn['text'] }};
-                                border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
-                                <span class="status-dot" style="background:{{ $statusIn['dot'] }};"></span>
-                                {{ $statusIn['label'] }}
-                            </span>
-                        </td>
-
-                        {{-- Status OUT --}}
-                        <td>
-                            @if(!$rec->check_out)
-                                {{-- Belum checkout --}}
-                                <span style="display:inline-flex;align-items:center;gap:5px;
-                                    background:#f3f4f6;color:#6b7280;
-                                    border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
-                                    <span class="status-dot" style="background:#9ca3af;"></span>
-                                    Belum Check Out
+                            </td>
+                            {{-- Hari --}}
+                            <td>
+                                <span style="font-size:12px;font-weight:600;color:#546e7a;">{{ $dayName }}</span>
+                            </td>
+                            {{-- Jam Masuk --}}
+                            <td>
+                                @if($rec->check_in)
+                                <span class="time-chip mono">
+                                    <svg width="11" height="11" fill="none" stroke="#1565c0" stroke-width="2" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                                    </svg>
+                                    {{ substr($rec->check_in, 0, 5) }}
                                 </span>
-                            @else
-                                <span style="display:inline-flex;align-items:center;gap:5px;
-                                    background:{{ $statusOut['bg'] }};color:{{ $statusOut['text'] }};
-                                    border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;">
-                                    <span class="status-dot" style="background:{{ $statusOut['dot'] }};"></span>
-                                    {{ $statusOut['label'] }}
+                                @else
+                                <span class="time-chip empty mono">--:--</span>
+                                @endif
+                            </td>
+                            {{-- ── FOTO IN ── --}}
+                            <td>
+                                @if($rec->photo_in)
+                                    <img src="{{ asset($rec->photo_in) }}"
+                                         class="photo-thumb"
+                                         onclick="openLightbox('{{ asset($rec->photo_in) }}', 'Foto Masuk — {{ $user->name }} ({{ substr($rec->check_in ?? '', 0, 5) }})')"
+                                         title="Klik untuk perbesar">
+                                @else
+                                    <div class="photo-empty">
+                                        <svg width="16" height="16" fill="none" stroke="#d1d5db" stroke-width="1.5" viewBox="0 0 24 24">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                            <circle cx="12" cy="13" r="4"/>
+                                        </svg>
+                                    </div>
+                                @endif
+                            </td>
+                            {{-- Jam Pulang --}}
+                            <td>
+                                @if($rec->check_out)
+                                <span class="time-chip out mono">
+                                    <svg width="11" height="11" fill="none" stroke="#2e7d32" stroke-width="2" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                                    </svg>
+                                    {{ substr($rec->check_out, 0, 5) }}
                                 </span>
-                            @endif
-                        </td>
-                    </tr>
-                    @empty
-                    <tr class="empty-row">
-                        <td colspan="9">
-                            <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 0;">
-                                <svg width="40" height="40" fill="none" stroke="#ccc" stroke-width="1.5" viewBox="0 0 24 24">
-                                    <rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>
-                                    <path d="M8 14h.01M12 14h.01M16 14h.01"/>
-                                </svg>
-                                <span style="color:#bbb;font-size:13px;">Tidak ada data presensi bulan ini</span>
-                            </div>
-                        </td>
-                    </tr>
-                    @endforelse
-                </tbody>
-            </table>
+                                @else
+                                <span class="time-chip empty mono">--:--</span>
+                                @endif
+                            </td>
+                            {{-- ── FOTO OUT ── --}}
+                            <td>
+                                @if($rec->photo_out)
+                                    <img src="{{ asset($rec->photo_out) }}"
+                                         class="photo-thumb"
+                                         onclick="openLightbox('{{ asset($rec->photo_out) }}', 'Foto Pulang — {{ $user->name }} ({{ substr($rec->check_out ?? '', 0, 5) }})')"
+                                         title="Klik untuk perbesar">
+                                @else
+                                    <div class="photo-empty">
+                                        <svg width="16" height="16" fill="none" stroke="#d1d5db" stroke-width="1.5" viewBox="0 0 24 24">
+                                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                                            <circle cx="12" cy="13" r="4"/>
+                                        </svg>
+                                    </div>
+                                @endif
+                            </td>
+                            {{-- Durasi --}}
+                            <td>
+                                @if($duration !== '-')
+                                <span class="duration-pill mono">{{ $duration }}</span>
+                                @else
+                                <span style="color:#ccc;font-size:12px;">—</span>
+                                @endif
+                            </td>
+                            {{-- Keterangan IN --}}
+                            <td style="max-width:130px;">
+                                <span style="font-size:12px;color:#546e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;" title="{{ $rec->notes }}">
+                                    {{ $rec->notes ?? '-' }}
+                                </span>
+                            </td>
+                            {{-- Keterangan OUT --}}
+                            <td style="max-width:130px;">
+                                @if($rec->check_out)
+                                <span style="font-size:12px;color:#546e7a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;max-width:120px;" title="{{ $rec->notes_out }}">
+                                    {{ $rec->notes_out ?? '-' }}
+                                </span>
+                                @else
+                                <span style="color:#ccc;font-size:12px;">—</span>
+                                @endif
+                            </td>
+                            {{-- Status IN --}}
+                            <td>
+                                <span style="display:inline-flex;align-items:center;gap:5px;
+                                    background:{{ $statusIn['bg'] }};color:{{ $statusIn['text'] }};
+                                    border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;white-space:nowrap;">
+                                    <span class="status-dot" style="background:{{ $statusIn['dot'] }};"></span>
+                                    {{ $statusIn['label'] }}
+                                </span>
+                            </td>
+                            {{-- Status OUT --}}
+                            <td>
+                                @if(!$rec->check_out)
+                                    <span style="display:inline-flex;align-items:center;gap:5px;
+                                        background:#f3f4f6;color:#6b7280;
+                                        border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;white-space:nowrap;">
+                                        <span class="status-dot" style="background:#9ca3af;"></span>
+                                        Belum Check Out
+                                    </span>
+                                @else
+                                    <span style="display:inline-flex;align-items:center;gap:5px;
+                                        background:{{ $statusOut['bg'] }};color:{{ $statusOut['text'] }};
+                                        border-radius:20px;padding:4px 11px;font-size:11px;font-weight:700;white-space:nowrap;">
+                                        <span class="status-dot" style="background:{{ $statusOut['dot'] }};"></span>
+                                        {{ $statusOut['label'] }}
+                                    </span>
+                                @endif
+                            </td>
+                        </tr>
+                        @empty
+                        <tr class="empty-row">
+                            <td colspan="11">
+                                <div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:24px 0;">
+                                    <svg width="40" height="40" fill="none" stroke="#ccc" stroke-width="1.5" viewBox="0 0 24 24">
+                                        <rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>
+                                        <path d="M8 14h.01M12 14h.01M16 14h.01"/>
+                                    </svg>
+                                    <span style="color:#bbb;font-size:13px;">Tidak ada data presensi bulan ini</span>
+                                </div>
+                            </td>
+                        </tr>
+                        @endforelse
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
     @empty
@@ -555,4 +639,22 @@
 .stat-mini { text-align:right; }
 [x-cloak] { display: none !important; }
 </style>
+
+<script>
+function openLightbox(src, caption) {
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox-caption').textContent = caption;
+    document.getElementById('photo-lightbox').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+function closeLightbox(e) {
+    if (!e || e.target !== document.getElementById('lightbox-img')) {
+        document.getElementById('photo-lightbox').classList.remove('active');
+        document.body.style.overflow = '';
+    }
+}
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeLightbox();
+});
+</script>
 </x-app-layout>
