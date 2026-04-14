@@ -14,7 +14,7 @@ class OfficeSetting extends Model
         'check_in_time',
         'check_out_time',
         'late_tolerance',
-        'radius_enforced',  
+        'radius_enforced', 
     ];
 
     protected $casts = [

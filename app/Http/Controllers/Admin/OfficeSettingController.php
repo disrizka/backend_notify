@@ -10,27 +10,18 @@ class OfficeSettingController extends Controller
 {
    public function index() {
     $setting = OfficeSetting::first(); 
+
+      \Log::info('OFFICE SETTING:', $setting ? $setting->toArray() : ['null' => true]);
     return view('admin.attendance.settings', compact('setting')); 
    }
 
-    /**
-     * GET /api/attendance/config
-     * 
-     * Mengembalikan semua konfigurasi kantor yang dibutuhkan Flutter:
-     * - Koordinat & radius kantor
-     * - Jam masuk + jam pulang + toleransi
-     * - Status hari libur
-     * - Status radius enforcement (ON/OFF dari toggle admin)
-     */
     public function getConfig() {
         $setting = OfficeSetting::first();
         $today = now()->format('Y-m-d');
         
-        // Ambil data libur dari database
         $holiday = \DB::table('holidays')->where('holiday_date', $today)->first();
         $isFriday = now()->isFriday(); 
 
-        // Logika penentuan status libur
         $isHolidayStatus = ($holiday || $isFriday) ? true : false;
         $name = '';
         if ($isFriday) {
@@ -42,23 +33,16 @@ class OfficeSettingController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
-                // Koordinat & radius
                 'latitude'         => (double) ($setting->latitude ?? -6.2000),
                 'longitude'        => (double) ($setting->longitude ?? 106.8166),
                 'radius'           => (double) ($setting->radius ?? 50.0),
 
-                // Jam kerja
                 'check_in_time'    => $setting->check_in_time ?? '08:00', 
-                'check_out_time'   => $setting->check_out_time ?? '17:00', // ← WAJIB untuk CheckoutScreen
+                'check_out_time'   => $setting->check_out_time ?? '17:00',
                 'late_tolerance'   => (int) ($setting->late_tolerance ?? 15),      
 
-                // Status hari libur (sama seperti CheckIn)
                 'is_holiday'       => $isHolidayStatus,
                 'holiday_name'     => $name,
-
-                // Radius enforcement toggle (ON = true, OFF = false)
-                // Jika true  → karyawan wajib dalam radius untuk auto-approve
-                // Jika false → semua bisa absen dari mana saja tapi selalu pending approval
                 'radius_enforced'  => (bool) ($setting->radius_enforced ?? true),
             ]
         ]);
@@ -73,7 +57,6 @@ class OfficeSettingController extends Controller
             'check_in_time'    => 'required',
             'check_out_time'   => 'required', 
             'late_tolerance'   => 'required|numeric',
-            // radius_enforced boleh tidak ada (checkbox unchecked = tidak terkirim)
         ]);
 
         OfficeSetting::updateOrCreate(

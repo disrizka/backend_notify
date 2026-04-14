@@ -213,26 +213,26 @@ public function schedule()
 
     public function updateSettings(Request $request) 
 {
-    // 1. Tambahkan validasi untuk jam masuk, pulang, dan toleransi
+    dd($request->all());
     $request->validate([
-        'latitude'    => 'required',
-        'longitude'   => 'required',
-        'radius'      => 'required|numeric',
-        'time_in'     => 'required', // Sesuaikan dengan nama 'name' di input Blade kamu
-        'time_out'    => 'required',
-        'tolerance'   => 'required|numeric',
+        'latitude'       => 'required',
+        'longitude'      => 'required',
+        'radius'         => 'required|numeric',
+        'check_in_time'  => 'required',
+        'check_out_time' => 'required',
+        'late_tolerance' => 'required|numeric',
     ]);
 
-    // 2. Simpan semua data ke database
     OfficeSetting::updateOrCreate(
         ['id' => 1], 
         [
-            'latitude'  => $request->latitude,
-            'longitude' => $request->longitude,
-            'radius'    => $request->radius,
-            'time_in'   => $request->time_in,   // INI WAJIB ADA
-            'time_out'  => $request->time_out,  // INI WAJIB ADA
-            'tolerance' => $request->tolerance, // INI WAJIB ADA
+            'latitude'        => $request->latitude,
+            'longitude'       => $request->longitude,
+            'radius'          => $request->radius,
+            'radius_enforced' => $request->has('radius_enforced') ? 1 : 0,
+            'check_in_time'   => $request->check_in_time,
+            'check_out_time'  => $request->check_out_time,
+            'late_tolerance'  => $request->late_tolerance,
         ]
     );
 
