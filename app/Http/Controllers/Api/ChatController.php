@@ -49,7 +49,7 @@ class ChatController extends Controller
         'file'      => 'nullable|file|max:51200',
         'parent_id' => 'nullable|integer|exists:chats,id',
     ]);
-
+ 
     $filePath = null;
     if ($request->hasFile('file') && $request->file('file')->isValid()) {
         $file     = $request->file('file');
@@ -57,9 +57,11 @@ class ChatController extends Controller
         $file->move(public_path('uploads'), $filename);
         $filePath = 'uploads/' . $filename;
     }
-
+ 
+    $sender = Auth::user();
+ 
     $chat = Chat::create([
-        'user_id'   => Auth::id(),
+        'user_id'   => $sender->id,
         'message'   => $request->input('message', ''),
         'type'      => $request->input('type', 'text'),
         'file_path' => $filePath,
@@ -67,22 +69,45 @@ class ChatController extends Controller
         'is_pinned' => false,
         'is_edited' => false,
     ]);
-
-    // LOGIKA KRUSIAL: Jika dari web, lakukan redirect balik
+ 
+    // ── KIRIM NOTIFIKASI KE SEMUA USER LAIN ──────────────────────────────
+    $otherUsers = \App\Models\User::where('id', '!=', $sender->id)->get();
+ 
+    // Buat preview pesan
+    $messagePreview = '';
+    if ($chat->message && $chat->message !== '') {
+        $messagePreview = \Illuminate\Support\Str::limit($chat->message, 60);
+    } elseif ($chat->type === 'image') {
+        $messagePreview = '📷 Mengirim foto';
+    } elseif ($chat->type === 'video') {
+        $messagePreview = '🎥 Mengirim video';
+    } elseif ($chat->type === 'audio' || $chat->type === 'voice') {
+        $messagePreview = '🎵 Mengirim audio';
+    } elseif ($chat->type === 'file') {
+        $messagePreview = '📎 Mengirim file';
+    }
+ 
+    foreach ($otherUsers as $user) {
+        $user->notify(new \App\Notifications\InternalNotification([
+            'title'   => $sender->name,
+            'message' => $messagePreview,
+            'type'    => 'chat',
+        ]));
+    }
+ 
+ 
     if ($request->wantsJson() || $request->is('api/*')) {
         return response()->json($chat, 201);
     }
-
-    return back(); 
+ 
+    return back();
 }
 
-   // Ganti fungsi-fungsi berikut di ChatController.php
 
 public function update(Request $request, $id)
 {
     $chat = Chat::findOrFail($id);
 
-    // Cek apakah ini pesan milik Rizka
     if ((int)$chat->user_id !== (int)Auth::id()) {
         return request()->wantsJson() ? response()->json(['message' => 'Tidak diizinkan'], 403) : back();
     }
