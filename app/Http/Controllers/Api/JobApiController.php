@@ -7,16 +7,12 @@ use App\Models\Job;
 use App\Models\JobTracker;
 use App\Models\JobComment;
 use App\Models\User;
-use App\Models\Division;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use App\Notifications\InternalNotification;
 
 class JobApiController extends Controller
 {
-    /**
-     * Mengambil semua tugas yang belum selesai (Pending & Process)
-     */
     public function getActiveJobs()
     {
         $jobs = Job::with(['cs', 'technician', 'trackers', 'comments.user'])
@@ -30,9 +26,6 @@ class JobApiController extends Controller
         ]);
     }
 
-    /**
-     * Detail satu tugas (Untuk Refresh di Flutter)
-     */
     public function show($id)
     {
         $job = Job::with(['cs', 'technician', 'trackers', 'comments.user'])->findOrFail($id);
@@ -42,9 +35,6 @@ class JobApiController extends Controller
         ]);
     }
 
-    /**
-     * Mengambil semua tugas yang sudah selesai
-     */
     public function getJobHistory()
     {
         $jobs = Job::with(['cs', 'technician', 'trackers', 'comments.user'])
@@ -58,9 +48,6 @@ class JobApiController extends Controller
         ]);
     }
 
-    /**
-     * Teknisi mengambil tugas pending
-     */
     public function acceptJob(Request $request, $jobId)
     {
         $job = Job::findOrFail($jobId);
@@ -69,7 +56,11 @@ class JobApiController extends Controller
             return response()->json(['error' => 'Bukan tugas Anda'], 403);
         }
 
-        $job->update(['status' => 'process', 'current_step' => 1]);
+        $job->update([
+            'status'      => 'process',
+            'current_step'=> 1,
+            'accepted_at' => now(),   // ← catat waktu mulai
+        ]);
 
         return response()->json([
             'success' => true,
@@ -78,12 +69,9 @@ class JobApiController extends Controller
         ]);
     }
 
-    /**
-     * Teknisi upload progress (Foto & Video)
-     */
     public function updateProgress(Request $request, $id)
     {
-        $job = Job::findOrFail($id);
+        $job  = Job::findOrFail($id);
         $user = auth()->user();
 
         if ($job->technician_id !== $user->id) {
@@ -96,6 +84,7 @@ class JobApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Tugas sudah selesai'], 400);
         }
 
+        // Foto
         $photoPath = null;
         if ($request->hasFile('photo')) {
             $fileName = time() . '_step' . $nextStep . '.' . $request->file('photo')->getClientOriginalExtension();
@@ -103,6 +92,7 @@ class JobApiController extends Controller
             $photoPath = 'job_photos/' . $fileName;
         }
 
+        // Video
         $videoPath = null;
         if ($request->hasFile('video')) {
             $vName = time() . '_video_step' . $nextStep . '.' . $request->file('video')->getClientOriginalExtension();
@@ -118,9 +108,21 @@ class JobApiController extends Controller
             'video_path'        => $videoPath,
         ]);
 
+        $isCompleted = $nextStep >= 4;
+
+        // Hitung durasi aktual jika selesai
+        $actualDuration = null;
+        if ($isCompleted && $job->accepted_at) {
+            $acceptedAt    = \Carbon\Carbon::parse($job->accepted_at);
+            $actualDuration = $acceptedAt->diffInMinutes(now()); // menit
+        }
+
         $job->update([
-            'current_step' => $nextStep,
-            'status'       => ($nextStep >= 4) ? 'completed' : 'process'
+            'current_step'      => $nextStep,
+            'status'            => $isCompleted ? 'completed' : 'process',
+            'completed_at'      => $isCompleted ? now() : null,
+            'actual_duration'   => $actualDuration,
+            'completion_reason' => $request->completion_reason,
         ]);
 
         return response()->json([
@@ -130,22 +132,16 @@ class JobApiController extends Controller
         ]);
     }
 
-   public function getTechnicians(Request $request)
+    public function getTechnicians(Request $request)
     {
-        $user = $request->user();
-
-        // Mulai query: Ambil semua user dengan role 'karyawan'
+        $user  = $request->user();
         $query = User::with('division')->where('role', 'karyawan');
 
-        // LOGIKA FILTER:
-        // Jika yang login adalah CS, maka dia TIDAK BOLEH melihat/memilih sesama orang CS
         if ($user->role === 'cs' || ($user->division && $user->division->name === 'Customer Service')) {
             $query->whereHas('division', function ($q) {
                 $q->where('name', '!=', 'Customer Service');
             });
         }
-        
-        // Jika yang login adalah Kepala, filter di atas dilewati (Kepala bisa lihat semua)
 
         $technicians = $query->get()->map(function ($u) {
             return [
@@ -155,50 +151,58 @@ class JobApiController extends Controller
             ];
         });
 
+        return response()->json(['success' => true, 'data' => $technicians]);
+    }
+
+    public function createJob(Request $request)
+    {
+        $request->validate([
+            'title'          => 'required|string|max:255',
+            'technician_id'  => 'required|exists:users,id',
+            'client_name'    => 'nullable|string|max:255',
+            'location'       => 'nullable|string',
+            'latitude'       => 'nullable|numeric',
+            'longitude'      => 'nullable|numeric',
+            'start_time'     => 'nullable|date',
+            'end_time'       => 'nullable|date',
+        ]);
+
+        $job = Job::create([
+            'title'          => $request->title,
+            'description'    => $request->description,
+            'cs_id'          => auth()->id(),
+            'technician_id'  => $request->technician_id,
+            'status'         => 'pending',
+            'client_name'    => $request->client_name,
+            'location'       => $request->location,
+            'latitude'       => $request->latitude,
+            'longitude'      => $request->longitude,
+            'start_time'     => $request->start_time,
+            'end_time'       => $request->end_time,
+        ]);
+
+        $receiver = User::find($request->technician_id);
+        if ($receiver) {
+            $estInfo = '';
+            if ($request->start_time && $request->end_time) {
+                $start = \Carbon\Carbon::parse($request->start_time)->format('d M H:i');
+                $end   = \Carbon\Carbon::parse($request->end_time)->format('d M H:i');
+                $estInfo = " | $start – $end";
+            }
+            $receiver->notify(new \App\Notifications\InternalNotification([
+                'title'   => 'Tugas Baru!',
+                'message' => 'Anda mendapatkan tugas: ' . $request->title . $estInfo,
+                'type'    => 'job_assigned',
+            ]));
+        }
+
         return response()->json([
             'success' => true,
-            'data'    => $technicians,
-        ]);
+            'message' => 'Tugas berhasil dibuat!',
+            'job'     => $job
+        ], 201);
     }
 
-    /**
-     * CS/Pimpinan membuat tugas baru
-     * FIX: Validasi role agar hanya CS & Kepala yang bisa create
-     */
-   public function createJob(Request $request)
-{
-    $request->validate([
-        'title' => 'required|string|max:255',
-        'technician_id' => 'required|exists:users,id',
-    ]);
-
-    $job = Job::create([
-        'title'         => $request->title,
-        'description'   => $request->description,
-        'cs_id'         => auth()->id(),
-        'technician_id' => $request->technician_id,
-        'status'        => 'pending',
-    ]);
-
-    $receiver = User::find($request->technician_id);
-    if ($receiver) {
-        $receiver->notify(new \App\Notifications\InternalNotification([
-            'title'   => 'Tugas Baru!',
-            'message' => 'Anda mendapatkan tugas: ' . $request->title,
-            'type'    => 'job_assigned',
-        ]));
-    }
-
-    return response()->json([
-        'success' => true,
-        'message' => 'Tugas berhasil dibuat!',
-        'job'     => $job
-    ], 201);
-}
-
-    /**
-     * Menambah komentar diskusi
-     */
     public function addComment(Request $request, $jobId)
     {
         $request->validate(['comment' => 'required|string|max:1000']);
@@ -221,7 +225,7 @@ class JobApiController extends Controller
         ], 201);
     }
 
-    // --- Helper Formatting ---
+    // ── Helpers ──────────────────────────────────────────────────────────────
 
     private function formatJobs($jobs): array
     {
@@ -247,26 +251,47 @@ class JobApiController extends Controller
             'created_at' => $c->created_at?->format('d M Y H:i'),
         ])->values()->toArray();
 
+        // Hitung status overdue
+        $isOverdue = false;
+        if ($job->end_time && $job->accepted_at) {
+            $deadline  = \Carbon\Carbon::parse($job->end_time);
+            $reference = $job->completed_at
+                ? \Carbon\Carbon::parse($job->completed_at)
+                : now();
+            $isOverdue = $reference->isAfter($deadline);
+        }
+
         return [
-            'id'           => $job->id,
-            'title'        => $job->title,
-            'description'  => $job->description,
-            'status'       => $job->status,
-            'current_step' => $job->current_step,
-            'feedback'     => $job->feedback,
-            'cs'           => $job->cs
-                ? ['id' => $job->cs->id, 'name' => $job->cs->name]
-                : null,
-            'technician'   => $job->technician
+            'id'                => $job->id,
+            'title'             => $job->title,
+            'description'       => $job->description,
+            'status'            => $job->status,
+            'current_step'      => $job->current_step,
+            'feedback'          => $job->feedback,
+            'cs'                => $job->cs ? ['id' => $job->cs->id, 'name' => $job->cs->name] : null,
+            'technician'        => $job->technician
                 ? ['id' => $job->technician->id, 'name' => $job->technician->name]
                 : null,
-            'technician_id' => $job->technician_id, // FIX: expose langsung untuk Flutter
-            'trackers'     => $trackers,
-            'comments'     => $comments,
-            'is_completed' => $job->status === 'completed',
-            'is_process'   => $job->status === 'process',
-            'is_pending'   => $job->status === 'pending',
-            'created_at'   => $job->created_at?->format('d M Y'),
+            'technician_id'     => $job->technician_id,
+            'trackers'          => $trackers,
+            'comments'          => $comments,
+            'is_completed'      => $job->status === 'completed',
+            'is_process'        => $job->status === 'process',
+            'is_pending'        => $job->status === 'pending',
+            'created_at'        => $job->created_at?->format('d M Y'),
+
+            // ── Fields baru ──
+            'client_name'       => $job->client_name,
+            'location'          => $job->location,
+            'latitude'          => $job->latitude,
+            'longitude'         => $job->longitude,
+            'start_time'        => $job->start_time?->toIso8601String(),
+            'end_time'          => $job->end_time?->toIso8601String(),
+            'accepted_at'       => $job->accepted_at?->toIso8601String(),
+            'completed_at'      => $job->completed_at?->toIso8601String(),
+            'actual_duration'   => $job->actual_duration,   
+            'completion_reason' => $job->completion_reason,
+            'is_overdue'        => $isOverdue,
         ];
     }
 }

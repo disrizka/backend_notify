@@ -1,234 +1,77 @@
 <?php
 
-namespace App\Http\Controllers\Admin;
+namespace App\Http\Controllers\Admin; 
 
 use App\Http\Controllers\Controller;
-use App\Models\Presence;
+use App\Models\OfficeSetting; 
 use Illuminate\Http\Request;
-use App\Models\OfficeSetting;
-use App\Models\Leave;
-use Illuminate\Support\Facades\DB;
-use App\Models\User;
-use Carbon\Carbon;
 
-class PresenceApprovalController extends Controller
+class OfficeSettingController extends Controller
 {
-    /**
-     * 1. Halaman Utama Approval Absensi (Kategori 'masuk')
-     */
-    public function index(Request $request)
-    {
-        // Query: ambil record yang punya setidaknya satu status pending
-        // (check-in pending ATAU check-out pending)
-        $presences = Presence::with('user')
-            ->where(function ($q) {
-                $q->where('is_approved', 'pending')
-                  ->orWhere(function ($q2) {
-                      // checkout ada dan masih pending
-                      $q2->whereNotNull('check_out')
-                         ->where(function ($q3) {
-                             $q3->where('is_approved_out', 'pending')
-                                ->orWhereNull('is_approved_out');
-                         });
-                  });
-            })
-            ->orderByDesc('date')
-            ->orderByDesc('id')
-            ->get();
- 
-        return view('admin.attendance.approval', compact('presences'));
-    }
+   public function index() {
+    $setting = OfficeSetting::first(); 
 
-    /**
-     * 2. Perizinan (Sakit/Cuti)
-     */
-    public function perizinan(Request $request)
-    {
-        $leaves = Leave::with('user')
-            ->where('status', 'pending')
-            ->orderByDesc('created_at')
-            ->get();
- 
-        return view('admin.attendance.perizinan', compact('leaves'));
-    }
- 
-    public function leaveApprove(Request $request, $id)
-    {
-        $leave = Leave::findOrFail($id);
-        $leave->update(['status' => 'approved']);
-        return back()->with('success', 'Perizinan disetujui.');
-    }
- 
-    public function leaveReject(Request $request, $id)
-    {
-        $leave = Leave::findOrFail($id);
-        $leave->update(['status' => 'rejected']);
-        return back()->with('success', 'Perizinan ditolak.');
-    }
-/**
- * 3. Sub-menu: Jadwal Kerja
- */
-public function schedule()
-    {
-        $manualHolidays = \DB::table('holidays')->get()->keyBy('holiday_date');
- 
-        $events    = [];
-        $yearStart = now()->startOfYear();
-        $yearEnd   = now()->endOfYear();
- 
-        for ($date = $yearStart->copy(); $date->lte($yearEnd); $date->addDay()) {
-            $dateStr = $date->format('Y-m-d');
- 
-            // Jumat → otomatis libur
-            if ($date->isFriday()) {
-                $title = isset($manualHolidays[$dateStr])
-                    ? ($manualHolidays[$dateStr]->name ?? 'Libur Mingguan (Jumat)')
-                    : 'Libur Mingguan (Jumat)';
- 
-                $events[$dateStr] = [
-                    'title' => $title,
-                    'start' => $dateStr,
-                    'color' => '#E53935',
-                ];
-                continue;
-            }
- 
-            // Hari lain yang ada di tabel manual
-            if (isset($manualHolidays[$dateStr])) {
-                $events[$dateStr] = [
-                    'title' => $manualHolidays[$dateStr]->name ?? 'Libur Kantor',
-                    'start' => $dateStr,
-                    'color' => '#E53935',
-                ];
-            }
+      \Log::info('OFFICE SETTING:', $setting ? $setting->toArray() : ['null' => true]);
+    return view('admin.attendance.settings', compact('setting')); 
+   }
+
+    public function getConfig() {
+        $setting = OfficeSetting::first();
+        $today = now()->format('Y-m-d');
+        
+        $holiday = \DB::table('holidays')->where('holiday_date', $today)->first();
+        $isFriday = now()->isFriday(); 
+
+        $isHolidayStatus = ($holiday || $isFriday) ? true : false;
+        $name = '';
+        if ($isFriday) {
+            $name = 'Libur Mingguan (Jumat)';
+        } elseif ($holiday) {
+            $name = $holiday->name ?? 'Libur Kantor';
         }
- 
-        $holidays = array_values($events);
-        return view('admin.presence.schedule', compact('holidays'));
-    }
- 
-    public function toggleHoliday(Request $request)
-    {
-        $request->validate(['date' => 'required|date']);
-        $date   = $request->date;
-        $carbon = \Carbon\Carbon::parse($date);
- 
-        // Blokir toggle Jumat
-        if ($carbon->isFriday()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Hari Jumat otomatis libur dan tidak dapat diubah.',
-            ]);
-        }
- 
-        $exists = \DB::table('holidays')->where('holiday_date', $date)->first();
- 
-        if ($exists) {
-            \DB::table('holidays')->where('holiday_date', $date)->delete();
-            $message = "Tanggal {$date} kembali menjadi HARI KERJA.";
-        } else {
-            \DB::table('holidays')->insert([
-                'holiday_date' => $date,
-                'name'         => 'Libur Kantor',
-                'created_at'   => now(),
-                'updated_at'   => now(),
-            ]);
-            $message = "Tanggal {$date} berhasil diset sebagai HARI LIBUR.";
-        }
- 
-        return response()->json(['success' => true, 'message' => $message]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'latitude'         => (double) ($setting->latitude ?? -6.2000),
+                'longitude'        => (double) ($setting->longitude ?? 106.8166),
+                'radius'           => (double) ($setting->radius ?? 50.0),
+
+                'check_in_time'    => $setting->check_in_time ?? '08:00', 
+                'check_out_time'   => $setting->check_out_time ?? '17:00',
+                'late_tolerance'   => (int) ($setting->late_tolerance ?? 15),      
+
+                'is_holiday'       => $isHolidayStatus,
+                'holiday_name'     => $name,
+                'radius_enforced'  => (bool) ($setting->radius_enforced ?? true),
+            ]
+        ]);
     }
 
-     public function updateStatus(Request $request, $id, $status)
-    {
-        $presence = Presence::findOrFail($id);
-        $type     = $request->query('type') ?? $request->input('type', 'in');
- 
-        if ($type === 'out') {
-            $presence->is_approved_out = $status; // 'approved' atau 'rejected'
-        } else {
-            $presence->is_approved     = $status;
-        }
- 
-        $presence->save();
- 
-        $label = $status === 'approved' ? 'disetujui' : 'ditolak';
-        return redirect()
-            ->route('admin.presence.index')
-            ->with('success', "Absensi berhasil {$label}. Data sudah masuk ke Riwayat.");
-    }
-    /**
-     * 4. Riwayat Presensi
-     */
-    public function history(Request $request)
-    {
-        $selectedMonth = (int) $request->query('month', now()->month);
-        $selectedYear  = (int) $request->query('year',  now()->year);
-        $search        = $request->query('search');
- 
-        $months = [
-            'Januari','Februari','Maret','April','Mei','Juni',
-            'Juli','Agustus','September','Oktober','November','Desember',
-        ];
- 
-        $usersQuery = User::with('division')->where('role', '!=', 'kepala');
-        if ($search) {
-            $usersQuery->where('name', 'like', "%{$search}%");
-        }
-        $users = $usersQuery->orderBy('name')->get();
- 
-        $presenceData = Presence::whereMonth('date', $selectedMonth)
-            ->whereYear('date', $selectedYear)
-            ->whereIn('user_id', $users->pluck('id'))
-            ->orderBy('date', 'desc')
-            ->get()
-            ->groupBy('user_id');
- 
-        $allPresences  = $presenceData->flatten();
-        $totalApproved = $allPresences->where('is_approved', 'approved')->count();
-        $totalPending  = $allPresences->where('is_approved', 'pending')->count();
-        $totalRejected = $allPresences->where('is_approved', 'rejected')->count();
- 
-        return view('admin.attendance.history', compact(
-            'users', 'presenceData', 'selectedMonth', 'selectedYear',
-            'months', 'totalApproved', 'totalPending', 'totalRejected'
-        ));
-    }
+   public function update(Request $request)
+   {
+        $request->validate([
+            'latitude'         => 'required',
+            'longitude'        => 'required',
+            'radius'           => 'required|numeric',
+            'check_in_time'    => 'required',
+            'check_out_time'   => 'required', 
+            'late_tolerance'   => 'required|numeric',
+        ]);
 
-    /**
-     * 5. Settings Absensi
-     */
-    public function settings() 
-    {
-        $setting = OfficeSetting::first() ?? new OfficeSetting();
-        return view('admin.attendance.settings', compact('setting'));
-    }
+        OfficeSetting::updateOrCreate(
+            ['id' => 1], 
+            [
+                'latitude'        => $request->latitude,
+                'longitude'       => $request->longitude,
+                'radius'          => $request->radius,
+                'check_in_time'   => $request->check_in_time,
+                'check_out_time'  => $request->check_out_time,
+                'late_tolerance'  => $request->late_tolerance,
+                'radius_enforced' => $request->has('radius_enforced'),
+            ]
+        );
 
-    public function updateSettings(Request $request) 
-{
-    // 1. Tambahkan validasi untuk jam masuk, pulang, dan toleransi
-    $request->validate([
-        'latitude'    => 'required',
-        'longitude'   => 'required',
-        'radius'      => 'required|numeric',
-        'time_in'     => 'required', // Sesuaikan dengan nama 'name' di input Blade kamu
-        'time_out'    => 'required',
-        'tolerance'   => 'required|numeric',
-    ]);
-
-    // 2. Simpan semua data ke database
-    OfficeSetting::updateOrCreate(
-        ['id' => 1], 
-        [
-            'latitude'  => $request->latitude,
-            'longitude' => $request->longitude,
-            'radius'    => $request->radius,
-            'time_in'   => $request->time_in,   // INI WAJIB ADA
-            'time_out'  => $request->time_out,  // INI WAJIB ADA
-            'tolerance' => $request->tolerance, // INI WAJIB ADA
-        ]
-    );
-
-    return back()->with('success', 'Pengaturan berhasil diperbarui!');
-}
+        return back()->with('success', 'Pengaturan berhasil diperbarui!');
+   }
 }
