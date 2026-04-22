@@ -14,11 +14,13 @@ use App\Http\Controllers\Api\JobApiController;
 use App\Http\Controllers\Api\HolidayController as ApiHolidayController;
 use App\Http\Controllers\UserController;
 
-// ── Rute Publik ──────────────────────────────────────────────────────────────
 Route::post('/login', [AuthApiController::class, 'login']);
 
-// ── Rute Terproteksi (Sanctum) ───────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
+    Route::post('/user/fcm-token', function (Request $request) {
+        $request->user()->update(['fcm_token' => $request->fcm_token]);
+        return response()->json(['success' => true]);
+    });
 
     // Auth & User
     Route::post('/logout',               [AuthApiController::class, 'logout']);

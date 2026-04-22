@@ -25,6 +25,7 @@ class User extends Authenticatable
         'avatar',
         'requires_location', 
         'radius_meters',
+        'fcm_token',
     ];
 
     /**

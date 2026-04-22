@@ -20,17 +20,29 @@ class InternalNotification extends Notification
         $this->details = $details;
     }
 
-    public function via($notifiable)
-    {
-        return ['database']; 
+    // app/Notifications/InternalNotification.php
+
+public function via($notifiable)
+{
+    return ['database']; // tetap simpan ke DB
+}
+
+public function toArray($notifiable)
+{
+    // Kirim FCM push jika user punya token
+    if ($notifiable->fcm_token) {
+        app(\App\Services\FcmPushService::class)->sendToToken(
+            $notifiable->fcm_token,
+            $this->details['title'],
+            $this->details['message'],
+            ['type' => $this->details['type']]
+        );
     }
 
-    public function toArray($notifiable)
-{
     return [
-        'title'   => $this->details['title'],    // ← was $this->data
-        'message' => $this->details['message'],  // ← was $this->data
-        'type'    => $this->details['type'],     // ← was $this->data
+        'title'   => $this->details['title'],
+        'message' => $this->details['message'],
+        'type'    => $this->details['type'],
     ];
 }
 }
