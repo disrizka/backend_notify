@@ -21,7 +21,27 @@ Route::middleware('auth:sanctum')->group(function () {
         $request->user()->update(['fcm_token' => $request->fcm_token]);
         return response()->json(['success' => true]);
     });
+    Route::get('/test-fcm-direct', function () {
+    // Ambil FCM token dari database (user pertama yang punya token)
+    $user = \App\Models\User::whereNotNull('fcm_token')->first();
+    
+    if (!$user) {
+        return response()->json(['error' => 'Tidak ada user dengan FCM token']);
+    }
 
+    $result = app(\App\Services\FcmPushService::class)->sendToToken(
+        $user->fcm_token,
+        'Test Background Notif',
+        'Ini muncul saat app ditutup!',
+        ['type' => 'test']
+    );
+
+    return response()->json([
+        'success'    => $result,
+        'user'       => $user->name,
+        'fcm_token'  => substr($user->fcm_token, 0, 30) . '...',
+    ]);
+});
     // Auth & User
     Route::post('/logout',               [AuthApiController::class, 'logout']);
     Route::get('/user',                  fn(Request $r) => $r->user()->load('division'));
