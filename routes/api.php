@@ -1,7 +1,4 @@
 <?php
-// ============================================================
-// FILE: routes/api.php
-// ============================================================
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -22,7 +19,6 @@ Route::middleware('auth:sanctum')->group(function () {
         return response()->json(['success' => true]);
     });
     Route::get('/test-fcm-direct', function () {
-    // Ambil FCM token dari database (user pertama yang punya token)
     $user = \App\Models\User::whereNotNull('fcm_token')->first();
     
     if (!$user) {
@@ -42,36 +38,26 @@ Route::middleware('auth:sanctum')->group(function () {
         'fcm_token'  => substr($user->fcm_token, 0, 30) . '...',
     ]);
 });
-    // Auth & User
     Route::post('/logout',               [AuthApiController::class, 'logout']);
     Route::get('/user',                  fn(Request $r) => $r->user()->load('division'));
     Route::get('/users',                 [UserController::class, 'index']);
     Route::put('/user/change-password',  [App\Http\Controllers\Api\UserApiController::class, 'changePassword']);
-
-    // Holidays
     Route::get('/holidays', [ApiHolidayController::class, 'index']);
-
-    // Presensi
     Route::post('/presence/check-in',    [PresenceController::class, 'storeCheckIn']);
     Route::post('/presence/checkout',    [PresenceController::class, 'storeCheckOut']);
     Route::post('/presence/permissions', [PresenceController::class, 'storePermission']);
     Route::get('/presence/today',        [PresenceController::class, 'todayStatus']);
     Route::get('/presence/history',      [PresenceController::class, 'history']);
-
-    // Konfigurasi Kantor
     Route::get('/attendance/config', [OfficeSettingController::class, 'getConfig']);
-
-    // ── Chat ─────────────────────────────────────────────────────────────────
     Route::get('/chats',              [ChatController::class, 'index']);
     Route::post('/chats',             [ChatController::class, 'store']);
-    Route::put('/chats/{id}',         [ChatController::class, 'update']);   // Edit pesan
-    Route::delete('/chats/{id}',      [ChatController::class, 'destroy']);  // Hapus pesan
-    Route::post('/chats/{id}/pin',    [ChatController::class, 'pin']);      // Pin pesan
-    Route::post('/chats/{id}/unpin',  [ChatController::class, 'unpin']);    // Unpin pesan
-    Route::post('/chats/{id}/seen',   [ChatController::class, 'markSeen']); // Tandai dilihat
-    Route::get('/chats/{id}/seen',    [ChatController::class, 'seenBy']);   // Siapa yang lihat
+    Route::put('/chats/{id}',         [ChatController::class, 'update']);  
+    Route::delete('/chats/{id}',      [ChatController::class, 'destroy']);  
+    Route::post('/chats/{id}/pin',    [ChatController::class, 'pin']);      
+    Route::post('/chats/{id}/unpin',  [ChatController::class, 'unpin']);   
+    Route::post('/chats/{id}/seen',   [ChatController::class, 'markSeen']);
+    Route::get('/chats/{id}/seen',    [ChatController::class, 'seenBy']);   
 
-    // Notifikasi
     Route::get('/notifications', function (Request $request) {
         return response()->json([
             'unread_count'  => $request->user()->unreadNotifications->count(),
@@ -82,7 +68,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/mark-read', [NotificationController::class, 'markRead']);
     Route::get('/notifications/count',      [NotificationController::class, 'getUnreadCount']);
 
-    // Job System
     Route::get('/jobs/active',           [JobApiController::class, 'getActiveJobs']);
     Route::get('/jobs/history',          [JobApiController::class, 'getJobHistory']);
     Route::get('/jobs/technicians',      [JobApiController::class, 'getTechnicians']);

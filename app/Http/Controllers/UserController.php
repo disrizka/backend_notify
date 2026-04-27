@@ -5,11 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Division;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 
 class UserController extends Controller
 {
-
     public function index(Request $request)
     {
         $users = User::with('division')
@@ -21,7 +19,6 @@ class UserController extends Controller
             return response()->json($users);
         }
 
-        // Jika akses dari Web Dashboard
         $divisions = Division::all();
         return view('kepala.user.index', compact('users', 'divisions'));
     }
@@ -29,28 +26,53 @@ class UserController extends Controller
     public function store(Request $request)
     {
         $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:users',
+            'name'        => 'required|string|max:255',
+            'email'       => 'required|string|email|max:255|unique:users',
             'division_id' => 'required|exists:divisions,id',
         ]);
 
         User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make('jonusa123'), 
-            'division_id' => $request->division_id,
-            'role' => 'karyawan',
+            'name'                => $request->name,
+            'email'               => $request->email,
+            // ✅ FIX: plain text saja — cast 'hashed' di model sudah hash otomatis
+            // ❌ JANGAN Hash::make() → double hash → login gagal
+            'password'            => 'jonusa123',
+            'division_id'         => $request->division_id,
+            'role'                => 'karyawan',
             'is_default_password' => true,
         ]);
 
         return redirect()->back()->with('success', 'Karyawan berhasil didaftarkan! Password default: jonusa123');
     }
 
-  
+    /**
+     * ✅ Method ini WAJIB ADA — sebelumnya tidak ada sama sekali
+     *    sehingga tombol Reset PW di blade error / tidak berfungsi
+     */
+    public function resetPassword($id)
+    {
+        $user = User::findOrFail($id);
+
+        // ✅ plain text — cast 'hashed' di model hash otomatis SEKALI
+        $user->password            = 'jonusa123';
+        $user->is_default_password = true;
+        $user->save();
+
+        if (request()->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => "Password {$user->name} berhasil direset ke jonusa123.",
+            ]);
+        }
+
+        return redirect()->back()->with('success', "Password {$user->name} berhasil direset ke jonusa123.");
+    }
+
     public function destroy($id)
     {
         try {
             $user = User::findOrFail($id);
+
             if ($user->id === auth()->id()) {
                 return redirect()->back()->with('error', 'Anda tidak bisa menghapus akun sendiri!');
             }
