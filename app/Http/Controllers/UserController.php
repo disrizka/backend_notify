@@ -34,8 +34,6 @@ class UserController extends Controller
         User::create([
             'name'                => $request->name,
             'email'               => $request->email,
-            // ✅ FIX: plain text saja — cast 'hashed' di model sudah hash otomatis
-            // ❌ JANGAN Hash::make() → double hash → login gagal
             'password'            => 'jonusa123',
             'division_id'         => $request->division_id,
             'role'                => 'karyawan',
@@ -45,15 +43,9 @@ class UserController extends Controller
         return redirect()->back()->with('success', 'Karyawan berhasil didaftarkan! Password default: jonusa123');
     }
 
-    /**
-     * ✅ Method ini WAJIB ADA — sebelumnya tidak ada sama sekali
-     *    sehingga tombol Reset PW di blade error / tidak berfungsi
-     */
     public function resetPassword($id)
     {
         $user = User::findOrFail($id);
-
-        // ✅ plain text — cast 'hashed' di model hash otomatis SEKALI
         $user->password            = 'jonusa123';
         $user->is_default_password = true;
         $user->save();
