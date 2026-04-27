@@ -49,29 +49,25 @@ class OfficeSettingController extends Controller
     }
 
    public function update(Request $request)
-   {
-        $request->validate([
-            'latitude'         => 'required',
-            'longitude'        => 'required',
-            'radius'           => 'required|numeric',
-            'check_in_time'    => 'required',
-            'check_out_time'   => 'required', 
-            'late_tolerance'   => 'required|numeric',
+    {
+        $setting = \App\Models\OfficeSetting::find(1);
+
+        $setting->fill([
+            'latitude'       => $request->latitude, 
+            'longitude'      => $request->longitude,
+            'radius'         => $request->radius,
+            'check_in_time'  => $request->check_in_time, 
+            'check_out_time' => $request->check_out_time,
+            'late_tolerance' => $request->late_tolerance,
         ]);
+        
+        if ($request->has('radius_enforced')) {
+            $setting->radius_enforced = true;
+        } else {
+            $setting->radius_enforced = false;
+        }
+        $setting->save();
 
-        OfficeSetting::updateOrCreate(
-            ['id' => 1], 
-            [
-                'latitude'        => $request->latitude,
-                'longitude'       => $request->longitude,
-                'radius'          => $request->radius,
-                'check_in_time'   => $request->check_in_time,
-                'check_out_time'  => $request->check_out_time,
-                'late_tolerance'  => $request->late_tolerance,
-                'radius_enforced' => $request->has('radius_enforced'),
-            ]
-        );
-
-        return back()->with('success', 'Pengaturan berhasil diperbarui!');
-   }
+        return redirect()->back()->with('success', 'Pengaturan berhasil diperbarui!');
+    }
 }

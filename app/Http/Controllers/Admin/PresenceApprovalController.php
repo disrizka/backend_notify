@@ -13,18 +13,12 @@ use Carbon\Carbon;
 
 class PresenceApprovalController extends Controller
 {
-    /**
-     * 1. Halaman Utama Approval Absensi (Kategori 'masuk')
-     */
     public function index(Request $request)
     {
-        // Query: ambil record yang punya setidaknya satu status pending
-        // (check-in pending ATAU check-out pending)
         $presences = Presence::with('user')
             ->where(function ($q) {
                 $q->where('is_approved', 'pending')
                   ->orWhere(function ($q2) {
-                      // checkout ada dan masih pending
                       $q2->whereNotNull('check_out')
                          ->where(function ($q3) {
                              $q3->where('is_approved_out', 'pending')
@@ -39,14 +33,10 @@ class PresenceApprovalController extends Controller
         return view('admin.attendance.approval', compact('presences'));
     }
 
-    /**
-     * 2. Perizinan (Sakit/Cuti)
-     */
     public function perizinan(Request $request)
     {
-        // Kita ambil SEMUA data dari tabel leaves agar Riwayat juga bisa tampil
         $permissions = Leave::with('user')
-            ->orderByRaw("FIELD(status, 'pending', 'approved', 'rejected')") // Pending tetap di atas
+            ->orderByRaw("FIELD(status, 'pending', 'approved', 'rejected')") 
             ->orderByDesc('created_at')
             ->get();
 
@@ -66,9 +56,6 @@ class PresenceApprovalController extends Controller
         $leave->update(['status' => 'rejected']);
         return back()->with('success', 'Perizinan ditolak.');
     }
-/**
- * 3. Sub-menu: Jadwal Kerja
- */
 public function schedule()
     {
         $manualHolidays = \DB::table('holidays')->get()->keyBy('holiday_date');
@@ -76,11 +63,8 @@ public function schedule()
         $events    = [];
         $yearStart = now()->startOfYear();
         $yearEnd   = now()->endOfYear();
- 
         for ($date = $yearStart->copy(); $date->lte($yearEnd); $date->addDay()) {
             $dateStr = $date->format('Y-m-d');
- 
-            // Jumat → otomatis libur
             if ($date->isFriday()) {
                 $title = isset($manualHolidays[$dateStr])
                     ? ($manualHolidays[$dateStr]->name ?? 'Libur Mingguan (Jumat)')
@@ -93,8 +77,7 @@ public function schedule()
                 ];
                 continue;
             }
- 
-            // Hari lain yang ada di tabel manual
+
             if (isset($manualHolidays[$dateStr])) {
                 $events[$dateStr] = [
                     'title' => $manualHolidays[$dateStr]->name ?? 'Libur Kantor',
@@ -113,8 +96,6 @@ public function schedule()
         $request->validate(['date' => 'required|date']);
         $date   = $request->date;
         $carbon = \Carbon\Carbon::parse($date);
- 
-        // Blokir toggle Jumat
         if ($carbon->isFriday()) {
             return response()->json([
                 'success' => false,
@@ -146,7 +127,7 @@ public function schedule()
         $type     = $request->query('type') ?? $request->input('type', 'in');
  
         if ($type === 'out') {
-            $presence->is_approved_out = $status; // 'approved' atau 'rejected'
+            $presence->is_approved_out = $status; 
         } else {
             $presence->is_approved     = $status;
         }
@@ -158,9 +139,7 @@ public function schedule()
             ->route('admin.presence.index')
             ->with('success', "Absensi berhasil {$label}. Data sudah masuk ke Riwayat.");
     }
-    /**
-     * 4. Riwayat Presensi
-     */
+
    public function history(Request $request)
 {
     $selectedMonth = (int) $request->query('month', now()->month);
@@ -174,14 +153,10 @@ public function schedule()
         $usersQuery->where('name', 'like', "%{$search}%");
     }
     $users = $usersQuery->orderBy('name')->get();
-
-    // 1. Ambil data absensi normal
     $presenceData = Presence::whereMonth('date', $selectedMonth)
         ->whereYear('date', $selectedYear)
         ->get()
         ->groupBy('user_id');
-
-    // 2. Ambil data perizinan yang sudah di-approve
     $leaveData = Leave::where('status', 'approved')
         ->where(function($q) use ($selectedMonth, $selectedYear) {
             $q->whereMonth('start_date', $selectedMonth)->whereYear('start_date', $selectedYear)
@@ -190,7 +165,6 @@ public function schedule()
         ->get()
         ->groupBy('user_id');
 
-    // Hitung statistik untuk Hero Header
     $allPresences = Presence::whereMonth('date', $selectedMonth)->whereYear('date', $selectedYear)->get();
     $totalApproved = $allPresences->where('is_approved', 'approved')->count();
     $totalPending  = $allPresences->where('is_approved', 'pending')->count();
@@ -202,9 +176,6 @@ public function schedule()
     ));
 }
 
-    /**
-     * 5. Settings Absensi
-     */
     public function settings() 
     {
         $setting = OfficeSetting::first() ?? new OfficeSetting();

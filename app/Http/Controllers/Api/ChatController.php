@@ -69,11 +69,8 @@ class ChatController extends Controller
         'is_pinned' => false,
         'is_edited' => false,
     ]);
- 
-    // ── KIRIM NOTIFIKASI KE SEMUA USER LAIN ──────────────────────────────
+
     $otherUsers = \App\Models\User::where('id', '!=', $sender->id)->get();
- 
-    // Buat preview pesan
     $messagePreview = '';
     if ($chat->message && $chat->message !== '') {
         $messagePreview = \Illuminate\Support\Str::limit($chat->message, 60);
@@ -118,8 +115,6 @@ public function update(Request $request, $id)
         'message'   => $request->input('message'),
         'is_edited' => true,
     ]);
-
-    // Jika dari web, segarkan halaman
     if ($request->wantsJson() || $request->is('api/*')) {
         return response()->json(['message' => 'Pesan diperbarui', 'chat' => $chat]);
     }
@@ -162,13 +157,10 @@ public function unpin($id)
         : back();
 }
 
-    // ── POST /api/chats/{id}/seen ─────────────────────────────────────────────
-    // Tandai pesan sudah dilihat oleh user saat ini.
+
     public function markSeen($id)
     {
         $userId = Auth::id();
-
-        // Cegah duplikat
         ChatSeen::firstOrCreate(
             ['chat_id' => $id, 'user_id' => $userId],
             ['seen_at' => now()]
@@ -177,12 +169,9 @@ public function unpin($id)
         return response()->json(['message' => 'Ditandai dilihat']);
     }
 
-    // ── GET /api/chats/{id}/seen ──────────────────────────────────────────────
-    // Kembalikan daftar user yang sudah melihat pesan ini.
     public function seenBy($id)
     {
-        Chat::findOrFail($id); // 404 jika tidak ada
-
+        Chat::findOrFail($id);
         $seenList = ChatSeen::where('chat_id', $id)
             ->with('user:id,name')
             ->orderBy('seen_at', 'asc')
