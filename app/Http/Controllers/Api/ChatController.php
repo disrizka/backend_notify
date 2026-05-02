@@ -89,6 +89,7 @@ class ChatController extends Controller
             'title'   => $sender->name,
             'message' => $messagePreview,
             'type'    => 'chat',
+            'route'   => 'chat',
         ]));
     }
  

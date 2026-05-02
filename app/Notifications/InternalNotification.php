@@ -35,14 +35,20 @@ public function toArray($notifiable)
             $notifiable->fcm_token,
             $this->details['title'],
             $this->details['message'],
-            ['type' => $this->details['type']]
+            [
+                'type'     => $this->details['type'],
+                'route'    => $this->details['route'] ?? '',
+                'route_id' => (string) ($this->details['route_id'] ?? ''),
+            ]
         );
     }
 
     return [
-        'title'   => $this->details['title'],
-        'message' => $this->details['message'],
-        'type'    => $this->details['type'],
+        'title'    => $this->details['title'],
+        'message'  => $this->details['message'],
+        'type'     => $this->details['type'],
+        'route'    => $this->details['route'] ?? null,
+        'route_id' => $this->details['route_id'] ?? null,
     ];
 }
 }

@@ -13,9 +13,7 @@ use App\Models\Holiday;
 
 class PresenceController extends Controller
 {
-    /**
-     * Hitung jarak dua koordinat (meter) — Haversine
-     */
+
     private function calculateDistance($lat1, $lon1, $lat2, $lon2): float
     {
         $R    = 6371000;
@@ -26,18 +24,6 @@ class PresenceController extends Controller
         return $R * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 
-    /**
-     * Cek syarat auto-approve untuk CHECK-IN
-     *
-     * Logika radius_enforced:
-     *   ON  (true)  → di luar radius = TOLAK (return blocked=true), tidak bisa absen
-     *   OFF (false) → semua bisa absen, tapi approved=false (pending)
-     *
-     * Return array:
-     *   'blocked'  => bool  — apakah request harus ditolak sama sekali (radius ON, luar radius)
-     *   'approved' => bool  — apakah bisa auto-approve
-     *   'reason'   => string
-     */
     private function checkAutoApproveCheckIn(float $userLat, float $userLng): array
     {
         $setting = OfficeSetting::first();
@@ -48,8 +34,6 @@ class PresenceController extends Controller
 
         $today    = now();
         $todayStr = $today->format('Y-m-d');
-
-        // ── 1. Hari libur ──────────────────────────────────────────────────
         if ($today->isFriday() || Holiday::where('holiday_date', $todayStr)->exists()) {
             return ['blocked' => false, 'approved' => false, 'reason' => 'Hari libur — perlu validasi manual'];
         }
@@ -62,10 +46,8 @@ class PresenceController extends Controller
         $distance = $this->calculateDistance($userLat, $userLng, $officeLat, $officeLng);
         $inRadius = $distance <= $radius;
 
-        // ── 2. Cek radius ──────────────────────────────────────────────────
         if (!$inRadius) {
             if ($radiusEnforced) {
-                // Radius ON + di luar → TOLAK TOTAL (blocked)
                 return [
                     'blocked' => true,
                     'approved' => false,
@@ -76,7 +58,6 @@ class PresenceController extends Controller
                     'distance' => round($distance),
                 ];
             } else {
-                // Radius OFF + di luar → boleh, tapi pending
                 return [
                     'blocked' => false,
                     'approved' => false,
@@ -89,7 +70,6 @@ class PresenceController extends Controller
             }
         }
 
-        // ── 3. Radius ON + dalam radius → cek jam masuk ───────────────────
         if ($radiusEnforced) {
             $checkInTime   = $setting->check_in_time ?? '08:00';
             $lateTolerance = (int) ($setting->late_tolerance ?? 15);
@@ -124,7 +104,6 @@ class PresenceController extends Controller
             ];
         }
 
-        // Radius OFF + dalam radius → tetap pending (enforcement nonaktif)
         return [
             'blocked' => false,
             'approved' => false,
@@ -133,10 +112,6 @@ class PresenceController extends Controller
         ];
     }
 
-    /**
-     * Cek syarat auto-approve untuk CHECK-OUT
-     * (Tidak ada cek jam ketat untuk checkout, hanya radius)
-     */
     private function checkAutoApproveCheckOut(float $userLat, float $userLng): array
     {
         $setting = OfficeSetting::first();
@@ -254,12 +229,12 @@ class PresenceController extends Controller
             'is_approved' => $isApproved,
         ]);
 
+
         $user->notify(new InternalNotification([
-            'title'   => $autoApproved
-                ? 'Presensi Masuk Disetujui Otomatis ✓'
-                : 'Presensi Masuk Menunggu Persetujuan',
-            'message' => 'Check-In ' . now()->format('H:i') . ' — ' . $autoCheck['reason'],
+            'title'   => 'Presensi Masuk Disetujui ✓',
+            'message' => 'Check-In ' . now()->format('H:i'),
             'type'    => 'presence',
+            'route'   => 'attendance_history',
         ]));
 
         return response()->json([

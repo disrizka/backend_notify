@@ -1,11 +1,4 @@
 <?php
-// ============================================================
-// PATCH: app/Http/Controllers/Api/JobApiController.php
-// FIX: 
-//   1. Tahap 4 muncul 2x → logic nextStep pakai current_step langsung (bukan +1)
-//   2. actual_duration selalu int (cast eksplisit)
-//   3. completed_steps & current_step di formatJob konsisten
-// ============================================================
 
 namespace App\Http\Controllers\Api;
 
@@ -65,7 +58,7 @@ class JobApiController extends Controller
 
         $job->update([
             'status'       => 'process',
-            'current_step' => 1,   // Tahap 1 = SEDANG dikerjakan
+            'current_step' => 1,   
             'accepted_at'  => now(),
         ]);
 
@@ -85,14 +78,7 @@ class JobApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Hanya teknisi pelaksana yang bisa update'], 403);
         }
 
-        // ── FIX UTAMA ──────────────────────────────────────────────────────
-        // current_step = tahap yang SEDANG dikerjakan
-        // Saat acceptJob → current_step = 1
-        // Saat submit tahap 1 → simpan tracker step_number=1, naik ke 2
-        // Saat submit tahap 4 → simpan tracker step_number=4, selesai
         $stepToSave = $job->current_step ?? 1;
-
-        // Cegah submit ulang jika sudah selesai
         if ($job->status === 'completed') {
             return response()->json(['success' => false, 'message' => 'Tugas sudah selesai'], 400);
         }
@@ -101,7 +87,6 @@ class JobApiController extends Controller
             return response()->json(['success' => false, 'message' => 'Tugas sudah selesai'], 400);
         }
 
-        // Cegah tracker duplikat untuk step yang sama
         $existingTracker = JobTracker::where('job_id', $job->id)
             ->where('step_number', $stepToSave)
             ->exists();
@@ -113,13 +98,11 @@ class JobApiController extends Controller
             ], 400);
         }
 
-        // ── Ambil persyaratan divisi ────────────────────────────────────────
         $division       = $job->technician?->division;
         $reqPhoto       = $division ? (bool) $division->{"req_photo_{$stepToSave}"} : false;
         $reqVideo       = $division ? (bool) $division->{"req_video_{$stepToSave}"} : false;
         $reqDescription = $division ? (bool) $division->{"req_desc_{$stepToSave}"}  : false;
 
-        // ── Validasi sesuai persyaratan divisi ──────────────────────────────
         if ($reqDescription && empty(trim($request->description_value ?? ''))) {
             return response()->json([
                 'success' => false,
@@ -168,17 +151,12 @@ class JobApiController extends Controller
 
         $isCompleted = ($stepToSave >= 4);
 
-        // ── Hitung durasi aktual jika selesai ───────────────────────────────
         $actualDuration = null;
         if ($isCompleted && $job->accepted_at) {
             $acceptedAt     = \Carbon\Carbon::parse($job->accepted_at);
-            // FIX: cast ke int eksplisit agar tidak jadi double di JSON
             $actualDuration = (int) $acceptedAt->diffInMinutes(now());
         }
 
-        // ── Update job ──────────────────────────────────────────────────────
-        // Jika selesai → current_step tetap 4 (tidak perlu naik ke 5)
-        // Jika belum   → naik ke step berikutnya
         $job->update([
             'current_step'      => $isCompleted ? 4 : ($stepToSave + 1),
             'status'            => $isCompleted ? 'completed' : 'process',
@@ -252,9 +230,11 @@ class JobApiController extends Controller
                 $estInfo = " | $start – $end";
             }
             $receiver->notify(new \App\Notifications\InternalNotification([
-                'title'   => 'Tugas Baru!',
-                'message' => 'Anda mendapatkan tugas: ' . $request->title . $estInfo,
-                'type'    => 'job_assigned',
+                'title'    => 'Tugas Baru!',
+                'message'  => 'Anda mendapatkan tugas: ' . $request->title . $estInfo,
+                'type'     => 'job_assigned',
+                'route'    => 'job_detail',
+                'route_id' => $job->id,
             ]));
         }
 
